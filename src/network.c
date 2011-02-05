@@ -8,10 +8,11 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <errno.h>
 #include "log.h"
+#include "commands.h"
 
 #include <pthread.h>
-#include <semaphore.h>
 
 #define PORT 1500
 #define BUFFER_SIZE (1024u)
@@ -22,48 +23,70 @@ typedef struct PARALLEL_WRAPPER
 	unsigned int high_port;
 	unsigned int command_port; /**< The assigned command port */
 	int command_socket; /**< The command socket */
-	unsigned int keep_alive_port; /**< The assigned keep alive port */
-	int keep_alive_socket; /**< The keep_alive socket */
-	sem_t sem; /**< Structure semaphore */
+	pthread_mutex_t mutex; /**< Structure semaphore */
 } PARALLEL_WRAPPER;
+
+typedef struct MESSAGE
+{
+	struct PARALLEL_WRAPPER *par_wrapper;
+	char *buffer;
+	int buffer_length;
+	struct sockaddr_storage from;
+	socklen_t from_len;
+} MESSAGE;
 
 int get_bound_dgram_socket(int port);
 int port_by_range(struct PARALLEL_WRAPPER *par_wrapper, unsigned int *port, int *socketfd);
 void * process_command(void *);
+int command_query(PARALLEL_WRAPPER *par_wrapper, struct sockaddr_storage *from, socklen_t len);
 
 int main()
 {
+	pthread_attr_t thread_attr;
+	pthread_attr_init(&thread_attr);
+	pthread_attr_setdetachstate(&thread_attr, PTHREAD_CREATE_DETACHED);
+	pthread_attr_setstacksize(&thread_attr, BUFFER_SIZE *BUFFER_SIZE);
 	fd_set readfds;
 	PARALLEL_WRAPPER *par_wrapper = calloc(1, sizeof(struct PARALLEL_WRAPPER));
 	/* Set low range and high range */
 	par_wrapper -> low_port = 1024;
 	par_wrapper -> high_port = 2048;
-	sem_init(&par_wrapper -> sem, 0, 1); /* Semaphore is available */
+	pthread_mutex_init(&par_wrapper -> mutex, NULL);
 
 	/* Open the command port */
-	sem_wait(&par_wrapper -> sem);
+	pthread_mutex_lock(&par_wrapper -> mutex);
 	port_by_range(par_wrapper, &par_wrapper -> command_port, &par_wrapper -> command_socket);
-	port_by_range(par_wrapper, &par_wrapper -> keep_alive_port, &par_wrapper -> keep_alive_socket);
-	sem_post(&par_wrapper -> sem);
+	pthread_mutex_unlock(&par_wrapper -> mutex);
 
 
 	FD_ZERO(&readfds);
 	FD_SET(par_wrapper -> command_socket, &readfds);
-	FD_SET(par_wrapper -> keep_alive_socket, &readfds);
-	int n = par_wrapper -> keep_alive_socket + 1;
+	int n = par_wrapper -> command_socket + 1;
 	while ( 1 )
 	{
 		select(n, &readfds, NULL, NULL, NULL);
 		print(PRNT_INFO, "Returned from select()\n");
 		if (FD_ISSET(par_wrapper -> command_socket, &readfds))
 		{
+			MESSAGE *message = calloc(1, sizeof(struct MESSAGE));
+			if (message == (MESSAGE *)NULL)
+			{
+				continue;
+			}
+			message -> buffer = malloc(sizeof(char) * BUFFER_SIZE);
+			if (message -> buffer == (char *)NULL)
+			{
+				free(message);
+				continue;
+			}
+			message -> par_wrapper = par_wrapper;
+			message -> from_len = sizeof(struct sockaddr_storage);
+			/* Receive the message */
+			message -> buffer_length = recvfrom(par_wrapper -> command_socket, message -> buffer, BUFFER_SIZE, 0,
+		   		(struct sockaddr *)&message -> from, &message -> from_len);	
 			pthread_t thread;
-			/* This is the child process */
-			pthread_create(&thread, NULL, &process_command, par_wrapper);
-		}
-		else if (FD_ISSET(par_wrapper -> keep_alive_socket, &readfds))
-		{
-			/* Respond to keep_alive */
+			/* This is the child thread */
+			pthread_create(&thread, &thread_attr, &process_command, message);
 		}
 	}
 
@@ -72,33 +95,68 @@ int main()
 
 void * process_command(void *data)
 {
-	struct sockaddr_storage from;
-	socklen_t from_len = sizeof(struct sockaddr_storage);
-	PARALLEL_WRAPPER *par_wrapper = (PARALLEL_WRAPPER *) data;
-	if (data == (PARALLEL_WRAPPER *) NULL)
+	MESSAGE *message = (MESSAGE *)data;
+	PARALLEL_WRAPPER *par_wrapper = (PARALLEL_WRAPPER *) message -> par_wrapper;
+	if (par_wrapper == (PARALLEL_WRAPPER *) NULL)
 	{
 		return NULL;
 	}
 	print(PRNT_INFO, "Thread started\n");
 	/* Allocate a buffer to hold the information */
-	char *buffer = (char *) malloc(sizeof(char) * BUFFER_SIZE);
-	if (buffer == (char *)NULL)
+	if (message -> buffer == (char *)NULL)
 	{
-		print(PRNT_ERR, "Unable to allocate buffer for command processing\n");
+		print(PRNT_ERR, "Passed message is null.");
+		free(message);
 		return NULL;
 	}
-	int num_read = recvfrom(par_wrapper -> command_socket, buffer, BUFFER_SIZE, 0,
-		   (struct sockaddr *)&from, &from_len);	
-
-	if (num_read <= 0)
+	if (message -> buffer_length <= 0)
 	{
+		free(message -> buffer);
+		free(message);
 		return NULL;
 	}
 
-	printf("Read: %.*s\n", num_read, buffer);
+	/* Look at the first integer, this is the command */
+	char *next = NULL;
+	enum CMD command = (enum CMD) strtol(message -> buffer, &next, 10);
+	switch (command)
+	{
+		case CMD_TERM:
+			print(PRNT_INFO, "Received command TERM (%d)\n", CMD_TERM);
+			break;
+		case CMD_QUERY:
+			print(PRNT_INFO, "Received command QUERY (%d)\n", CMD_QUERY);
+			command_query(par_wrapper, &message -> from, message -> from_len);
+			break;
+		case CMD_ALIVE:
+			print(PRNT_INFO, "Received command ALIVE (%d)\n", CMD_ALIVE);
+			break;
+		case CMD_SEND_FILE:
+			print(PRNT_INFO, "Received command SEND_FILE (%d)\n", CMD_SEND_FILE);
+			break;
+		default:
+			print(PRNT_WARN, "Unknown command %d\n", command);
+			break;
+	}
 
-	return NULL;
+	free(message -> buffer);
+	free(message);
+	pthread_exit(NULL);
 }
+
+int command_query(PARALLEL_WRAPPER *par_wrapper, struct sockaddr_storage *from, socklen_t len)
+{
+	char buffer[BUFFER_SIZE];
+
+	/* Send the reply (CMD_ALIVE) back to the host */
+	sprintf(buffer, "%d", CMD_ALIVE);
+	int sent = sendto(par_wrapper -> command_socket, buffer, strlen(buffer), 0, (struct sockaddr *)from, len);
+	if (sent < 0)
+	{
+		print(PRNT_ERR, "%s\n", strerror( errno ) );
+	}
+	return 0;
+}	
 
 
 /**
