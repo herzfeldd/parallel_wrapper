@@ -59,6 +59,8 @@ void print_message(enum PRINT_LEVEL type,  char *file, int line, __const char *_
 		vfprintf(stdout, __format, args);
 	}
 	va_end(args);
+	fflush(stdout);
+	fflush(stderr);
 }
 
 /* Print the message only if debugging is enabled
@@ -71,7 +73,7 @@ void debug_message(enum PRINT_LEVEL type,  char *file, int line, __const char *_
 
 	char *debug_val;
 	debug_val = getenv ("PARALLEL_DEBUG");
-	if (debug_val != NULL || type == PRNT_ERR)
+	//if (debug_val != NULL || type == PRNT_ERR)
 	{
 		va_list args;
 		va_start(args, __format);

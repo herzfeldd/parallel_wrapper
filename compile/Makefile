@@ -7,7 +7,7 @@ CFLAGS		= -g -O2 -Wall -Werror ${INCLUDE} ${DETAIL}
 
 # Chirp library
 CHIRP_LIB	= -lchirp_client_x86-64
-LDFLAGS		= ${LIB} ${CHIRP_LIB} 
+LDFLAGS		= ${LIB} ${CHIRP_LIB}
 
 # Define the source file locations
 SRC		= ${SOURCE:%.c=../src/%.c}

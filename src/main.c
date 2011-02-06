@@ -12,6 +12,7 @@
 #include "commands.h"
 #include "chirp_client.h" 
 
+static int remove_quotes(char *string);
 /**
  * Main.c
  */
@@ -35,8 +36,6 @@ int main(int argc, char **argv)
 	/* Open the command port */
 	pthread_mutex_lock(&par_wrapper -> mutex);
 	port_by_range(par_wrapper, &par_wrapper -> command_port, &par_wrapper -> command_socket);
-	par_wrapper -> rank0_sinful = get_sinful_string(par_wrapper -> command_port);
-	debug(PRNT_INFO, "Rank 0 sinful string: %s\n", par_wrapper -> rank0_sinful);
 	pthread_mutex_unlock(&par_wrapper -> mutex);
 
 	/* Spawn a thread to service the network */
@@ -76,39 +75,87 @@ int main(int argc, char **argv)
 
 	/* Error checking passed */
 	if (par_wrapper -> rank == 0)
-	{
+	{	
+		pthread_mutex_lock(&par_wrapper -> mutex);
+		par_wrapper -> rank0_sinful = get_sinful_string(par_wrapper -> command_port);
+		debug(PRNT_INFO, "Rank 0 sinful string: %s\n", par_wrapper -> rank0_sinful);
+		pthread_mutex_unlock(&par_wrapper -> mutex);
+		
+		
 		/* Wait for rank 0 sinful string */
 		printf("Sinful = %s\n", par_wrapper -> rank0_sinful);
+		char *temp = malloc(strlen(par_wrapper -> rank0_sinful) + 10);
+		sprintf(temp, "\"%s\"", par_wrapper -> rank0_sinful);
 		/* I am rank 0 */
-		int RC = chirp_client_set_job_attr(chirp, "RANK0_SINFUL", par_wrapper -> rank0_sinful);	
+		int RC = chirp_client_set_job_attr(chirp, "RANK0_SINFUL", temp);	
 		if (RC != 0)
 		{
 			print(PRNT_ERR, "Unable to set RANK0_SINFUL h\n");
 			exit(5);
 		}
+		print(PRNT_INFO, "Successfully set sinful string RANK0_SINFUL=%s\n", temp);
+		free(temp);
 	}
 	else
 	{
 		char *sinful_string = NULL;
 		/* I am not rank 0 */
+		int length = 0;
 		while ( 1 )
 		{
-			int RC = chirp_client_get_job_attr(chirp, "RANK0_SINFUL", &sinful_string);
-			if (RC == 0)
+			length = chirp_client_get_job_attr(chirp, "RANK0_SINFUL", &sinful_string);
+			if (length > 0 && sinful_string != (char *)NULL)
 			{
 				break;
 			}
 			sleep(1); /* Sleep for 1 second */
 			print(PRNT_WARN, "Unable to get sinful string\n");
 		}
-		print(PRNT_INFO, "Got sinful string: %s\n", sinful_string);
+		/* Convert sinful string into normal string (removing quotes) */
+		sinful_string[length] = '\0';
+		remove_quotes(sinful_string);
+		pthread_mutex_lock(&par_wrapper -> mutex);
+		par_wrapper -> rank0_sinful = sinful_string;
+		pthread_mutex_unlock(&par_wrapper -> mutex);
+		print(PRNT_INFO, "Got sinful string: %s\n", par_wrapper -> rank0_sinful);
 	}
 	chirp_client_disconnect(chirp);
-
+	fflush(stdout);
+	fflush(stderr);
 
 	void *RC;
 	pthread_join(thread, &RC);
 	return 0;
 }
 
-
+/**
+ * Remove the quotes from a string
+ */
+static int remove_quotes(char *string)
+{
+	if (string == (char *)NULL || strlen(string) == 0)
+	{
+		return 0;
+	}
+	int length = strlen(string);
+	int i = 0;
+	int index = 0;
+	while (i < length && index < length)
+	{
+		if (string[i] == '"' || string[i] == '\'')
+		{
+			i++;
+		}
+		if (i < length)
+		{
+			string[index] = string[i];
+		}
+		i++;
+		index++;
+	}
+	if (index < length)
+	{
+		string[index-1] = '\0';
+	}
+	return 0;
+}
