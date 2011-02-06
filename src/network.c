@@ -1,64 +1,28 @@
 /* A simple server in the internet domain using TCP
    The port number is passed as an argument */
 #include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <sys/types.h> 
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <errno.h>
+#include "wrapper.h"
 #include "log.h"
 #include "commands.h"
 
-#include <pthread.h>
+/* Local Function Prototypes */
+static void * process_command(void *data);
+static int get_bound_dgram_socket(int port);
+static int command_query(PARALLEL_WRAPPER *par_wrapper, struct sockaddr_storage *from, socklen_t len);
 
-#define PORT 1500
-#define BUFFER_SIZE (1024u)
-
-typedef struct PARALLEL_WRAPPER
-{
-	unsigned int low_port;
-	unsigned int high_port;
-	unsigned int command_port; /**< The assigned command port */
-	int command_socket; /**< The command socket */
-	pthread_mutex_t mutex; /**< Structure semaphore */
-} PARALLEL_WRAPPER;
-
-typedef struct MESSAGE
-{
-	struct PARALLEL_WRAPPER *par_wrapper;
-	char *buffer;
-	int buffer_length;
-	struct sockaddr_storage from;
-	socklen_t from_len;
-} MESSAGE;
-
-int get_bound_dgram_socket(int port);
-int port_by_range(struct PARALLEL_WRAPPER *par_wrapper, unsigned int *port, int *socketfd);
-void * process_command(void *);
-int command_query(PARALLEL_WRAPPER *par_wrapper, struct sockaddr_storage *from, socklen_t len);
-
-int main()
+void * service_network(void *data)
 {
 	pthread_attr_t thread_attr;
+	fd_set readfds;
+	
+	PARALLEL_WRAPPER *par_wrapper = (PARALLEL_WRAPPER *) data;
+
+	/* Set up the thread attributes */
 	pthread_attr_init(&thread_attr);
 	pthread_attr_setdetachstate(&thread_attr, PTHREAD_CREATE_DETACHED);
 	pthread_attr_setstacksize(&thread_attr, BUFFER_SIZE *BUFFER_SIZE);
-	fd_set readfds;
-	PARALLEL_WRAPPER *par_wrapper = calloc(1, sizeof(struct PARALLEL_WRAPPER));
-	/* Set low range and high range */
-	par_wrapper -> low_port = 1024;
-	par_wrapper -> high_port = 2048;
-	pthread_mutex_init(&par_wrapper -> mutex, NULL);
-
-	/* Open the command port */
-	pthread_mutex_lock(&par_wrapper -> mutex);
-	port_by_range(par_wrapper, &par_wrapper -> command_port, &par_wrapper -> command_socket);
-	pthread_mutex_unlock(&par_wrapper -> mutex);
-
-
+	
+	/* Set up the select statement */
 	FD_ZERO(&readfds);
 	FD_SET(par_wrapper -> command_socket, &readfds);
 	int n = par_wrapper -> command_socket + 1;
@@ -89,11 +53,12 @@ int main()
 			pthread_create(&thread, &thread_attr, &process_command, message);
 		}
 	}
-
-	return 0;
+	return NULL; /* should never get here */
 }
 
-void * process_command(void *data)
+
+
+static void * process_command(void *data)
 {
 	MESSAGE *message = (MESSAGE *)data;
 	PARALLEL_WRAPPER *par_wrapper = (PARALLEL_WRAPPER *) message -> par_wrapper;
@@ -118,7 +83,17 @@ void * process_command(void *data)
 
 	/* Look at the first integer, this is the command */
 	char *next = NULL;
+	errno = 0;
 	enum CMD command = (enum CMD) strtol(message -> buffer, &next, 10);
+	if (errno != 0)
+	{
+		/* An error ocurred in parsing */
+		print(PRNT_WARN, "Unable to parse message\n");
+		free(message -> buffer);
+		free(message);
+		return NULL;
+	}
+
 	switch (command)
 	{
 		case CMD_TERM:
@@ -144,7 +119,7 @@ void * process_command(void *data)
 	pthread_exit(NULL);
 }
 
-int command_query(PARALLEL_WRAPPER *par_wrapper, struct sockaddr_storage *from, socklen_t len)
+static int command_query(PARALLEL_WRAPPER *par_wrapper, struct sockaddr_storage *from, socklen_t len)
 {
 	char buffer[BUFFER_SIZE];
 
@@ -204,7 +179,7 @@ int port_by_range(struct PARALLEL_WRAPPER *par_wrapper, unsigned int *port, int 
  * Returns the socket descriptor associated with the passed port. 
  * If an error occurs, the function returns <= 0.
  */
-int get_bound_dgram_socket(int port)
+static int get_bound_dgram_socket(int port)
 {
 	int socketfd, RC;
 	struct addrinfo hints;
@@ -256,3 +231,38 @@ int get_bound_dgram_socket(int port)
 	return -3; /* We didn't bind to a socket */
 }
 
+/**
+ * returns the sinful string with the appropriate port
+ */
+char *get_sinful_string(int port)
+{
+	struct addrinfo hints, *info;
+	int gai_result;
+	char char_port[1024];
+	snprintf(char_port, 1024, "%d", port);
+	char *fqdn = (char *) malloc(BUFFER_SIZE *sizeof(char));
+	if (fqdn == (char *)NULL)
+	{
+		return NULL;
+	}
+
+	fqdn[BUFFER_SIZE-1] = '\0';
+	gethostname(fqdn, BUFFER_SIZE-1);
+
+	memset(&hints, 0, sizeof hints);
+	hints.ai_family = AF_UNSPEC; /*either IPV4 or IPV6*/
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_flags = AI_CANONNAME;
+
+	if ((gai_result = getaddrinfo(fqdn, char_port, &hints, &info)) != 0) 
+	{
+    	print(PRNT_ERR, "getaddrinfo: %s\n", gai_strerror(gai_result));
+		snprintf(fqdn, BUFFER_SIZE, "%s:%d", fqdn, port);
+		return fqdn;
+	}
+	if (info -> ai_canonname != NULL)
+	{
+		snprintf(fqdn, BUFFER_SIZE, "%s:%d", info -> ai_canonname, port);
+	}
+	return fqdn;	
+}

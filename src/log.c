@@ -69,9 +69,9 @@ void debug_message(enum PRINT_LEVEL type,  char *file, int line, __const char *_
 {
 	int RC; /* generic function return code */
 
-	char *debug;
-	debug = getenv ("PARALLEL_DEBUG");
-	if (debug != NULL || type == PRNT_ERR)
+	char *debug_val;
+	debug_val = getenv ("PARALLEL_DEBUG");
+	if (debug_val != NULL || type == PRNT_ERR)
 	{
 		va_list args;
 		va_start(args, __format);
