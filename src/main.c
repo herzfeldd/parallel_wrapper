@@ -24,8 +24,8 @@ int main(int argc, char **argv)
 	pthread_attr_setstacksize(&thread_attr, BUFFER_SIZE *BUFFER_SIZE);
 	PARALLEL_WRAPPER *par_wrapper = calloc(1, sizeof(struct PARALLEL_WRAPPER));
 	/* Set low range and high range */
-	par_wrapper -> low_port = 1024;
-	par_wrapper -> high_port = 2048;
+	par_wrapper -> low_port = 51000;
+	par_wrapper -> high_port = 61000;
 	par_wrapper -> num_procs = -1;
 	par_wrapper -> rank = -1;
 	/* Fill in the default value of the mpi executable */
@@ -63,11 +63,22 @@ int main(int argc, char **argv)
 		print(PRNT_ERR, "The rank is invalid. Consider setting _CONDOR_PROCNO\n");
 		return 2;
 	}
-
+	/* Allocate the processors array if I am rank 0 */
+	if (par_wrapper -> rank == 0)
+	{
+		pthread_mutex_lock(&par_wrapper -> mutex);
+		par_wrapper -> processors = (struct PROC **) calloc(par_wrapper -> num_procs - 1, sizeof(struct PROC *)); /* Don't need one for ourselves */
+		pthread_mutex_unlock(&par_wrapper -> mutex);
+	}
+	
+	//pthread_join(thread, NULL);
 
 	/* Attempt to open a chirp context */
-	struct chirp_client *chirp = chirp_client_connect_default();
-	if (chirp == (struct chirp_client *)NULL)
+	
+	pthread_mutex_lock(&par_wrapper -> mutex);
+	par_wrapper -> chirp = chirp_client_connect_default();
+	pthread_mutex_unlock(&par_wrapper -> mutex);
+	if (par_wrapper -> chirp == (struct chirp_client *)NULL)
 	{
 		print(PRNT_ERR, "Unable to create chirp connnection\n");
 		return 3;
@@ -77,17 +88,16 @@ int main(int argc, char **argv)
 	if (par_wrapper -> rank == 0)
 	{	
 		pthread_mutex_lock(&par_wrapper -> mutex);
-		par_wrapper -> rank0_sinful = get_sinful_string(par_wrapper -> command_port);
+		par_wrapper -> rank0_sinful = get_hostname_sinful_string(par_wrapper -> command_port);
 		debug(PRNT_INFO, "Rank 0 sinful string: %s\n", par_wrapper -> rank0_sinful);
 		pthread_mutex_unlock(&par_wrapper -> mutex);
 		
 		
 		/* Wait for rank 0 sinful string */
-		printf("Sinful = %s\n", par_wrapper -> rank0_sinful);
 		char *temp = malloc(strlen(par_wrapper -> rank0_sinful) + 10);
 		sprintf(temp, "\"%s\"", par_wrapper -> rank0_sinful);
 		/* I am rank 0 */
-		int RC = chirp_client_set_job_attr(chirp, "RANK0_SINFUL", temp);	
+		int RC = chirp_client_set_job_attr(par_wrapper -> chirp, "RANK0_SINFUL", temp);	
 		if (RC != 0)
 		{
 			print(PRNT_ERR, "Unable to set RANK0_SINFUL h\n");
@@ -95,6 +105,12 @@ int main(int argc, char **argv)
 		}
 		print(PRNT_INFO, "Successfully set sinful string RANK0_SINFUL=%s\n", temp);
 		free(temp);
+	
+		/* Busy wait for all nodes to register */
+		while (par_wrapper -> registered_processors < par_wrapper -> num_procs - 1)
+		{
+			;
+		}
 	}
 	else
 	{
@@ -103,7 +119,7 @@ int main(int argc, char **argv)
 		int length = 0;
 		while ( 1 )
 		{
-			length = chirp_client_get_job_attr(chirp, "RANK0_SINFUL", &sinful_string);
+			length = chirp_client_get_job_attr(par_wrapper -> chirp, "RANK0_SINFUL", &sinful_string);
 			if (length > 0 && sinful_string != (char *)NULL)
 			{
 				break;
@@ -118,10 +134,9 @@ int main(int argc, char **argv)
 		par_wrapper -> rank0_sinful = sinful_string;
 		pthread_mutex_unlock(&par_wrapper -> mutex);
 		print(PRNT_INFO, "Got sinful string: %s\n", par_wrapper -> rank0_sinful);
+
+		/* TODO: Register with rank 0 */
 	}
-	chirp_client_disconnect(chirp);
-	fflush(stdout);
-	fflush(stderr);
 
 	void *RC;
 	pthread_join(thread, &RC);

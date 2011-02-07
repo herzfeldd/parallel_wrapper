@@ -12,8 +12,16 @@
 #include <errno.h>
 #include <pthread.h>
 #include <time.h>
+#include "chirp_client.h"
 
 #define BUFFER_SIZE (1024u)
+
+typedef struct PROC
+{
+	char *sinful; /**< The sinful string for this processor */
+	int rank; /**< the rank of this processor */
+	time_t last_update; /**< The last update time for this host */
+} PROC;
 
 typedef struct PARALLEL_WRAPPER
 {
@@ -30,6 +38,9 @@ typedef struct PARALLEL_WRAPPER
 	char *scratch_dir; /**< Scratch directory (path) */
 	char **executable; /**< Array holding the passed executable and args */
    	int executable_length;	
+	struct chirp_client *chirp; /**< Chirp connection */
+	struct PROC **processors;
+	int registered_processors;
 } PARALLEL_WRAPPER;
 
 typedef struct MESSAGE
@@ -56,4 +67,6 @@ extern int parse_args(int argc, char **argv, PARALLEL_WRAPPER *par_wrapper);
  */
 extern void parse_environment_vars(PARALLEL_WRAPPER *par_wrapper);
 
+
+void cleanup(int RC, PARALLEL_WRAPPER *);
 #endif /* PARALLEL_H */

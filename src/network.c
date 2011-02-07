@@ -8,7 +8,10 @@
 /* Local Function Prototypes */
 static void * process_command(void *data);
 static int get_bound_dgram_socket(int port);
-static int command_query(PARALLEL_WRAPPER *par_wrapper, struct sockaddr_storage *from, socklen_t len);
+static int command_query(PARALLEL_WRAPPER *par_wrapper, char *args, struct sockaddr_storage *from, socklen_t len);
+static int command_term(PARALLEL_WRAPPER *par_wrapper, char *args, struct sockaddr_storage *from, socklen_t len);
+static int command_register(PARALLEL_WRAPPER *par_wrapper, char *args, struct sockaddr_storage *from, socklen_t len);
+static char *get_hostname_by_source(struct sockaddr_storage *ss, socklen_t len);
 
 void * service_network(void *data)
 {
@@ -98,16 +101,21 @@ static void * process_command(void *data)
 	{
 		case CMD_TERM:
 			print(PRNT_INFO, "Received command TERM (%d)\n", CMD_TERM);
+			command_term(par_wrapper, next, &message -> from, message -> from_len);
 			break;
 		case CMD_QUERY:
 			print(PRNT_INFO, "Received command QUERY (%d)\n", CMD_QUERY);
-			command_query(par_wrapper, &message -> from, message -> from_len);
+			command_query(par_wrapper, next, &message -> from, message -> from_len);
 			break;
-		case CMD_ALIVE:
-			print(PRNT_INFO, "Received command ALIVE (%d)\n", CMD_ALIVE);
+		case CMD_ACK:
+			print(PRNT_INFO, "Received command ACK (%d)\n", CMD_ACK);
 			break;
 		case CMD_SEND_FILE:
 			print(PRNT_INFO, "Received command SEND_FILE (%d)\n", CMD_SEND_FILE);
+			break;
+		case CMD_REGISTER:
+			print(PRNT_INFO, "Received command REGISTER (%d)\n", CMD_REGISTER);
+			command_register(par_wrapper, next, &message -> from, message -> from_len);
 			break;
 		default:
 			print(PRNT_WARN, "Unknown command %d\n", command);
@@ -119,12 +127,116 @@ static void * process_command(void *data)
 	pthread_exit(NULL);
 }
 
-static int command_query(PARALLEL_WRAPPER *par_wrapper, struct sockaddr_storage *from, socklen_t len)
+/**
+ * Register a processor
+ */
+static int command_register(PARALLEL_WRAPPER *par_wrapper, char *args, struct sockaddr_storage *from, socklen_t len)
+{
+	/* The assumed structure of the command is REGISTER <RANK> */
+	if (par_wrapper -> rank != 0)
+	{
+		print(PRNT_WARN, "Cannot register. I am rank %d not rank 0\n", par_wrapper -> rank);
+		return 1;
+	}
+	errno = 0;
+	int rank = strtol(args, NULL, 10);
+	if (errno != 0)
+	{
+		print(PRNT_WARN, "Malformed REGISTER command. Expected REGISTER <RANK>\n");
+		return 2;
+	}
+	if (rank <= 0 || rank >= par_wrapper -> num_procs)
+	{
+		print(PRNT_WARN, "Cannot register rank %d, must be in range (%d, %d)\n", rank, 0, par_wrapper -> num_procs);
+		return 3;
+	}
+	/* Check if we are already in the list */
+	if (par_wrapper -> processors == (struct PROC **)NULL)
+	{
+		print(PRNT_WARN, "Unable to register rank %d, processor table has not been allocated\n", rank);
+		return 4;
+	}
+	if (par_wrapper -> processors[rank-1] != (struct PROC *)NULL)
+	{
+		print(PRNT_WARN, "Rank %d has already been registered. Skipping.\n", rank);
+		return 5;
+	}
+	/* Attempt to send ACK back */
+	char buffer[BUFFER_SIZE];
+	sprintf(buffer, "%d", CMD_ACK);
+	int sent = sendto(par_wrapper -> command_socket, buffer, strlen(buffer), 0, (struct sockaddr *)from, len);
+	if (sent < 0)
+	{
+		print(PRNT_ERR, "%s\n", strerror( errno ) );
+		return 6;
+	}
+
+	/* Add to the list (-1's because rank 0 is not in the list)*/
+	pthread_mutex_lock(&par_wrapper -> mutex);
+	par_wrapper -> processors[rank-1] = (struct PROC *)calloc(1, sizeof(struct PROC));
+	par_wrapper -> processors[rank-1] -> sinful = get_hostname_by_source(from, len);
+	par_wrapper -> processors[rank-1] -> rank = rank;
+	par_wrapper -> registered_processors++;
+	pthread_mutex_unlock(&par_wrapper -> mutex);
+	print(PRNT_INFO, "Successfully registered rank %d\n", rank);
+	
+	
+	return 0;
+}
+
+
+/**
+ * Process the terminate signal
+ */
+static int command_term(PARALLEL_WRAPPER *par_wrapper, char *args, struct sockaddr_storage *from, socklen_t len)
+{
+	/* The assumed structure of the command is TERM <RETURN CODE> */
+	
+	/* Make sure that the command originated from the master (hostname) */
+	char *src_hostname = get_hostname_by_source(from, len);
+	if (par_wrapper -> rank0_sinful != (char *)NULL)
+	{
+		/* Get the rank0 hostname */
+		if (strcmp(par_wrapper -> rank0_sinful, src_hostname) != 0)
+		{
+			print(PRNT_WARN, "Unauthorized attempt to shutdown from %s\n", src_hostname);
+			return 1;
+		}
+	}
+	free(src_hostname);
+
+	/* Send ACK */
+	char buffer[BUFFER_SIZE];
+	sprintf(buffer, "%d", CMD_ACK);
+	int sent = sendto(par_wrapper -> command_socket, buffer, strlen(buffer), 0, (struct sockaddr *)from, len);
+	if (sent < 0)
+	{
+		print(PRNT_ERR, "%s\n", strerror( errno ) );
+		return 2;
+	}
+	/* Get the return code */
+	errno = 0;
+	int RC = strtol(args, NULL, 10);
+	if (errno == 0)
+	{
+		cleanup(RC, par_wrapper);
+	}
+	else
+	{
+		cleanup(0, par_wrapper); /* Assume no errors */
+	}
+	return 0;	
+}
+
+/**
+ * Process the query command
+ */
+static int command_query(PARALLEL_WRAPPER *par_wrapper, char *args, struct sockaddr_storage *from, socklen_t len)
 {
 	char buffer[BUFFER_SIZE];
 
 	/* Send the reply (CMD_ALIVE) back to the host */
-	sprintf(buffer, "%d", CMD_ALIVE);
+	sprintf(buffer, "%d", CMD_ACK);
 	int sent = sendto(par_wrapper -> command_socket, buffer, strlen(buffer), 0, (struct sockaddr *)from, len);
 	if (sent < 0)
 	{
@@ -234,7 +346,7 @@ static int get_bound_dgram_socket(int port)
 /**
  * returns the sinful string with the appropriate port
  */
-char *get_sinful_string(int port)
+char *get_hostname_sinful_string(int port)
 {
 	struct addrinfo hints, *info;
 	int gai_result;
@@ -266,3 +378,46 @@ char *get_sinful_string(int port)
 	}
 	return fqdn;	
 }
+
+static char *get_hostname_by_source(struct sockaddr_storage *ss, socklen_t len)
+{
+	int RC = 0;
+	struct sockaddr_in *sin;
+	struct sockaddr_in6 *sin6;
+	struct hostent *hp = NULL;
+	int port = 0;
+	char *name = (char *) malloc(BUFFER_SIZE *sizeof(char));
+	if (name == (char *)NULL)
+	{
+		return NULL;
+	}
+	/* gethostbyaddr() case. */
+	switch (ss -> ss_family) 
+	{
+		case AF_INET:
+			sin = (struct sockaddr_in *)ss;
+			hp = gethostbyaddr(&sin->sin_addr, sizeof(sin->sin_addr),
+				ss -> ss_family);
+			port = sin -> sin_port;
+			break;
+		case AF_INET6:
+			sin6 = (struct sockaddr_in6 *)ss;
+			hp = gethostbyaddr(&sin6->sin6_addr, sizeof(sin6->sin6_addr),
+				ss -> ss_family);
+			port = sin6 -> sin6_port;
+			break;
+		default:
+			return NULL;
+			break;
+	}
+	strcpy(name, hp->h_name);
+	
+	snprintf(name, BUFFER_SIZE, "%s:%d", name, port); 
+
+	/* getnameinfo() case. NI_NUMERICHOST avoids DNS lookup. */
+	RC = getnameinfo((struct sockaddr *)ss, len,
+		name, BUFFER_SIZE, NULL, 0, 0);
+	snprintf(name, BUFFER_SIZE, "%s:%d", name, port);
+	return name;
+}
+
