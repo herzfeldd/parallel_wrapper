@@ -11,7 +11,8 @@ typedef enum CMD
 } CMD;
 
 extern void * service_network(void *);
-extern int port_by_range(struct PARALLEL_WRAPPER *par_wrapper, unsigned int *port, int *socketfd);
+extern int port_by_range(struct PARALLEL_WRAPPER *par_wrapper, uint16_t *port, int *socketfd);
 extern char *get_hostname_sinful_string(int port);
 
+extern int send_command_to_rank(PARALLEL_WRAPPER *par_wrapper, int dest_rank, char *command);
 #endif /* COMMAND_H */

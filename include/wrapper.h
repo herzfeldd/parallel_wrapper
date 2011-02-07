@@ -20,14 +20,24 @@ typedef struct PROC
 {
 	char *sinful; /**< The sinful string for this processor */
 	int rank; /**< the rank of this processor */
+	uint16_t command_port;
 	time_t last_update; /**< The last update time for this host */
 } PROC;
+
+/**
+ * Filled when ACK is recieved
+ */
+typedef struct ACK
+{
+	int received;
+	int rank;
+} ACK; 
 
 typedef struct PARALLEL_WRAPPER
 {
 	unsigned int low_port;
 	unsigned int high_port;
-	unsigned int command_port; /**< The assigned command port */
+	uint16_t command_port; /**< The assigned command port */
 	int command_socket; /**< The command socket */
 	pthread_mutex_t mutex; /**< Structure semaphore */
 	int num_procs;
@@ -41,6 +51,7 @@ typedef struct PARALLEL_WRAPPER
 	struct chirp_client *chirp; /**< Chirp connection */
 	struct PROC **processors;
 	int registered_processors;
+	struct ACK *ack;
 } PARALLEL_WRAPPER;
 
 typedef struct MESSAGE

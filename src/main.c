@@ -30,6 +30,8 @@ int main(int argc, char **argv)
 	par_wrapper -> rank = -1;
 	/* Fill in the default value of the mpi executable */
 	par_wrapper -> mpi_executable = strdup("mpiexec.hydra");
+	/* Allocate the ack structure */
+	par_wrapper -> ack = (struct ACK *)calloc(1, sizeof(struct ACK));
 	//par_wrapper -> scratch = mkdtemp(".scratch_XXXXXXXX");
 	pthread_mutex_init(&par_wrapper -> mutex, NULL);
 
@@ -71,8 +73,6 @@ int main(int argc, char **argv)
 		pthread_mutex_unlock(&par_wrapper -> mutex);
 	}
 	
-	//pthread_join(thread, NULL);
-
 	/* Attempt to open a chirp context */
 	
 	pthread_mutex_lock(&par_wrapper -> mutex);
@@ -89,7 +89,6 @@ int main(int argc, char **argv)
 	{	
 		pthread_mutex_lock(&par_wrapper -> mutex);
 		par_wrapper -> rank0_sinful = get_hostname_sinful_string(par_wrapper -> command_port);
-		debug(PRNT_INFO, "Rank 0 sinful string: %s\n", par_wrapper -> rank0_sinful);
 		pthread_mutex_unlock(&par_wrapper -> mutex);
 		
 		
@@ -120,7 +119,7 @@ int main(int argc, char **argv)
 		while ( 1 )
 		{
 			length = chirp_client_get_job_attr(par_wrapper -> chirp, "RANK0_SINFUL", &sinful_string);
-			if (length > 0 && sinful_string != (char *)NULL)
+			if (length > 0 && sinful_string != (char *)NULL && strcmp(sinful_string, "\"UNDEFINED\"") != 0)
 			{
 				break;
 			}
@@ -135,7 +134,19 @@ int main(int argc, char **argv)
 		pthread_mutex_unlock(&par_wrapper -> mutex);
 		print(PRNT_INFO, "Got sinful string: %s\n", par_wrapper -> rank0_sinful);
 
-		/* TODO: Register with rank 0 */
+		/* Register with rank 0 */
+		char command[1024];
+		snprintf(command, 1024, "%d %d %d", CMD_REGISTER, par_wrapper -> rank, par_wrapper -> command_port);
+		/* Clear the ack */
+		pthread_mutex_lock(&par_wrapper -> mutex);
+		par_wrapper -> ack -> received = 0;
+		pthread_mutex_unlock(&par_wrapper -> mutex);
+		while (par_wrapper -> ack -> received == 0 && par_wrapper -> ack -> rank != par_wrapper -> rank)
+		{
+			send_command_to_rank(par_wrapper, 0, command);
+			sleep(1);
+		}
+		print(PRNT_INFO, "Successfully registered with rank 0\n");
 	}
 
 	void *RC;

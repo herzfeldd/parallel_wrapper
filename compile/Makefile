@@ -1,7 +1,8 @@
 EXECUTABLE	= ../parallel_wrapper
 LIB		= -L../lib
 INCLUDE		= -I../include
-SOURCE 		= network.c log.c main.c parse_args.c cleanup.c
+SOURCE 		= network.c log.c main.c parse_args.c cleanup.c \
+                  command.c
 DETAIL		= -DDETAIL
 CFLAGS		= -g -O2 -Wall -Werror ${INCLUDE} ${DETAIL}
 
