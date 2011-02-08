@@ -13,6 +13,8 @@
 #include "chirp_client.h" 
 
 static int remove_quotes(char *string);
+static int get_distinct_hosts(PARALLEL_WRAPPER *par_wrapper);
+
 /**
  * Main.c
  */
@@ -69,7 +71,13 @@ int main(int argc, char **argv)
 	if (par_wrapper -> rank == 0)
 	{
 		pthread_mutex_lock(&par_wrapper -> mutex);
-		par_wrapper -> processors = (struct PROC **) calloc(par_wrapper -> num_procs - 1, sizeof(struct PROC *)); /* Don't need one for ourselves */
+		par_wrapper -> processors = (struct PROC **) calloc(par_wrapper -> num_procs, sizeof(struct PROC *)); /* Don't need one for ourselves */
+		par_wrapper -> registered_processors++;
+		par_wrapper -> processors[0] = (struct PROC *) calloc(1, sizeof(struct PROC));
+		par_wrapper -> processors[0] -> sinful = get_hostname_sinful_string(par_wrapper -> command_port);
+;
+		par_wrapper -> processors[0] -> cpus = 1;
+		par_wrapper -> processors[0] -> command_port = par_wrapper -> command_port;
 		pthread_mutex_unlock(&par_wrapper -> mutex);
 	}
 	
@@ -104,12 +112,20 @@ int main(int argc, char **argv)
 		}
 		print(PRNT_INFO, "Successfully set sinful string RANK0_SINFUL=%s\n", temp);
 		free(temp);
-	
+
 		/* Busy wait for all nodes to register */
-		while (par_wrapper -> registered_processors < par_wrapper -> num_procs - 1)
+		while (par_wrapper -> registered_processors < par_wrapper -> num_procs)
 		{
-			;
+			printf("Registered %d of %d\n", par_wrapper -> registered_processors, par_wrapper -> num_procs);
+			usleep(500 * 1000);
 		}
+		print(PRNT_INFO, "All processors registered\n");
+		get_distinct_hosts(par_wrapper);
+		int i;
+		for(i = 0; i < par_wrapper -> num_procs; i++)
+		{
+			printf("%s:%d\n", par_wrapper -> processors[i] -> sinful, i);
+		}		
 	}
 	else
 	{
@@ -119,7 +135,7 @@ int main(int argc, char **argv)
 		while ( 1 )
 		{
 			length = chirp_client_get_job_attr(par_wrapper -> chirp, "RANK0_SINFUL", &sinful_string);
-			if (length > 0 && sinful_string != (char *)NULL && strcmp(sinful_string, "\"UNDEFINED\"") != 0)
+			if (length > 0 && sinful_string != (char *)NULL && strcmp(sinful_string, "\"UNDEFINED\"") != 0 && strcmp(sinful_string, "UNDEFINED") != 0)
 			{
 				break;
 			}
@@ -136,7 +152,7 @@ int main(int argc, char **argv)
 
 		/* Register with rank 0 */
 		char command[1024];
-		snprintf(command, 1024, "%d %d %d", CMD_REGISTER, par_wrapper -> rank, par_wrapper -> command_port);
+		snprintf(command, 1024, "%d %d %d %d", CMD_REGISTER, par_wrapper -> rank, par_wrapper -> command_port, 1);
 		/* Clear the ack */
 		pthread_mutex_lock(&par_wrapper -> mutex);
 		par_wrapper -> ack -> received = 0;
@@ -151,6 +167,7 @@ int main(int argc, char **argv)
 
 	void *RC;
 	pthread_join(thread, &RC);
+	print(PRNT_ERR, "ASSERTION FAILED - EXITTING WITH STATUS 0!\n");
 	return 0;
 }
 
@@ -183,5 +200,33 @@ static int remove_quotes(char *string)
 	{
 		string[index-1] = '\0';
 	}
+	return 0;
+}
+
+/**
+ * Set distinct hosts
+ */
+static int get_distinct_hosts(PARALLEL_WRAPPER *par_wrapper)
+{
+	int i, j;
+	if (par_wrapper -> num_procs <= 1)
+	{
+		return 0;
+	}
+	for (i = 0; i < par_wrapper -> num_procs; i++)
+	{
+		if (par_wrapper -> processors[i] -> not_unique != 0)
+		{
+			continue; /* This is a non-unique host, no bother comparing */
+		}
+		for (j = i + 1; j < par_wrapper -> num_procs; j++)
+		{
+			if (strcmp(par_wrapper -> processors[i] -> sinful, par_wrapper -> processors[j] -> sinful) == 0);
+			{
+				par_wrapper -> processors[j] -> not_unique = 1;
+			}
+		}
+	}
+
 	return 0;
 }

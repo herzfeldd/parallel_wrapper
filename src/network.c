@@ -12,14 +12,22 @@ static int command_query(PARALLEL_WRAPPER *par_wrapper, char *args, struct socka
 static int command_term(PARALLEL_WRAPPER *par_wrapper, char *args, struct sockaddr_storage *from, socklen_t len);
 static int command_register(PARALLEL_WRAPPER *par_wrapper, char *args, struct sockaddr_storage *from, socklen_t len);
 static int command_ack(PARALLEL_WRAPPER *par_wrapper, char *args, struct sockaddr_storage *from, socklen_t len);
+static void *keep_alive(void *data);
+static int send_term_signal(PARALLEL_WRAPPER *par_wrapper, int RC);
 static char *get_hostname_by_source(struct sockaddr_storage *ss, socklen_t len);
 static char *get_ip_str(const struct sockaddr *sa, char *s, size_t maxlen);
+
+/* Global Functions */
+pthread_mutex_t keep_alive_mutex; 
 
 void * service_network(void *data)
 {
 	pthread_attr_t thread_attr;
 	fd_set readfds;
-	
+
+	/* Initialize the keep_alive_mutex */
+	pthread_mutex_init(&keep_alive_mutex, NULL);
+
 	PARALLEL_WRAPPER *par_wrapper = (PARALLEL_WRAPPER *) data;
 
 	/* Set up the thread attributes */
@@ -28,13 +36,29 @@ void * service_network(void *data)
 	pthread_attr_setstacksize(&thread_attr, BUFFER_SIZE *BUFFER_SIZE);
 	
 	/* Set up the select statement */
-	FD_ZERO(&readfds);
-	FD_SET(par_wrapper -> command_socket, &readfds);
 	int n = par_wrapper -> command_socket + 1;
+	struct timeval timeout;
+	timeout.tv_sec = 1;
+	timeout.tv_usec = 0;
 	while ( 1 )
 	{
-		select(n, &readfds, NULL, NULL, NULL);
-		if (FD_ISSET(par_wrapper -> command_socket, &readfds))
+		/* Always reset the timeouts */
+		FD_ZERO(&readfds);
+		FD_SET(par_wrapper -> command_socket, &readfds);
+		int RC;
+		if (par_wrapper -> rank == 0)
+		{
+			RC = select(n, &readfds, NULL, NULL, &timeout);
+		}
+		else
+		{
+			RC = select(n, &readfds, NULL, NULL, NULL);
+		}
+		if (RC == -1)
+		{
+			print(PRNT_ERR, "select()\n");
+		}
+		else if (RC > 0 && FD_ISSET(par_wrapper -> command_socket, &readfds))
 		{
 			MESSAGE *message = calloc(1, sizeof(struct MESSAGE));
 			if (message == (MESSAGE *)NULL)
@@ -56,11 +80,110 @@ void * service_network(void *data)
 			/* This is the child thread */
 			pthread_create(&thread, &thread_attr, &process_command, message);
 		}
+		else
+		{
+			/* We timed out, if rank 0 - send keep alives and check for deaths */
+			if (par_wrapper -> rank == 0)
+			{
+				timeout.tv_sec = 1;
+				timeout.tv_usec = 0;
+				pthread_t thread;
+				pthread_create(&thread, &thread_attr, &keep_alive, par_wrapper);	
+			}
+		}
 	}
 	return NULL; /* should never get here */
 }
 
+/**
+ * Send keep alive message and check for deaths
+ */
+static void *keep_alive(void *data)
+{
+	PARALLEL_WRAPPER *par_wrapper = (PARALLEL_WRAPPER *) data;
+	/* Attempt to obtain the keep_alive mutex */
+	if (pthread_mutex_trylock(&keep_alive_mutex) != 0)
+	{
+		return NULL; /* Another thread is already here */
+	}
+	
+	if (par_wrapper -> processors == (struct PROC **) NULL)
+	{
+		pthread_mutex_unlock(&keep_alive_mutex);
+		return NULL; /* Can't do anything the processor structure doesn't exist */
+	}
+	
+	int i;
+	char command[1024];
+	snprintf(command, 1024, "%d", CMD_QUERY);
+	for (i = 1; i < par_wrapper -> num_procs; i++)
+	{
+		send_command_to_rank(par_wrapper, i, command);
+	}
+	/* TODO: Check for deaths */
+	time_t current_time;
+	int send_term = 0;
+	for (i = 1; i < par_wrapper -> num_procs; i++)
+	{
+		if (par_wrapper -> processors[i] == (struct PROC *)NULL)
+		{
+			continue; /* This host has not registered yet */
+		}
+		time(&current_time);
+		if (difftime(current_time, par_wrapper -> processors[i] -> last_update) > 60)
+		{
+			/* We haven't heard from them in a minute */
+			print(PRNT_WARN, "Haven't received response from rank %d in %d seconds. Terminating processes\n", i, 60);
+			send_term = 1;
+			break;
+		}	
+	}
+	if (send_term != 0)
+	{
+		send_term_signal(par_wrapper, 1);
+	}
+	pthread_mutex_unlock(&keep_alive_mutex);
+	return NULL;
+}
 
+/**
+ * Send the term signal to all registered processors
+ */
+static int send_term_signal(PARALLEL_WRAPPER *par_wrapper, int RC)
+{
+	char command[1024];
+	snprintf(command, 1024, "%d %d", CMD_TERM, RC);
+	int timeout = 60;
+	int i, j;
+	for (i = 1; i < par_wrapper -> num_procs; i++)
+	{
+		if (par_wrapper -> processors[i] == (struct PROC *)NULL)
+		{
+			print(PRNT_WARN, "Sending term signal, but process %d has not yet registered. Skipping.\n", i);
+			continue;
+		}
+		pthread_mutex_lock(&par_wrapper -> mutex);
+		par_wrapper -> ack -> received = 0;
+		pthread_mutex_unlock(&par_wrapper -> mutex);
+		/* OK, wait for the ACK back signal */
+		for (j = 0; j < timeout; j++)
+		{
+			send_command_to_rank(par_wrapper, i, command); /* Send term */
+			if (par_wrapper -> ack -> received != 0 && par_wrapper -> ack -> rank == i)
+			{
+				continue; /* Done with this host */
+			}
+			sleep(1);
+		}
+		if (j >= timeout)
+		{
+			print(PRNT_WARN, "Sent term signal to %d, but did not receive a response. Continuing.\n", i);
+		}
+	}
+	/* Call the cleanup code */
+	cleanup(RC, par_wrapper);
+	return 0; /* This never actualy returns */
+}
 
 static void * process_command(void *data)
 {
@@ -151,7 +274,7 @@ static int command_ack(PARALLEL_WRAPPER *par_wrapper, char *args, struct sockadd
 	if (par_wrapper -> rank == 0)
 	{
 		/* Set update time */
-		time(&par_wrapper -> processors[rank - 1] -> last_update);
+		time(&par_wrapper -> processors[rank] -> last_update);
 	}
 	pthread_mutex_unlock(&par_wrapper -> mutex);
 	print(PRNT_INFO, "Successfully recieved ACK from rank %d\n", rank);
@@ -173,7 +296,7 @@ static int command_register(PARALLEL_WRAPPER *par_wrapper, char *args, struct so
 	int rank = strtol(args, &args, 10);
 	if (errno != 0)
 	{
-		print(PRNT_WARN, "Malformed REGISTER command. Expected REGISTER <RANK> <CMD_PORT>\n");
+		print(PRNT_WARN, "Malformed REGISTER command. Expected REGISTER <RANK> <CMD_PORT> <CPUS>\n");
 		return 2;
 	}
 	if (rank <= 0 || rank >= par_wrapper -> num_procs)
@@ -189,12 +312,20 @@ static int command_register(PARALLEL_WRAPPER *par_wrapper, char *args, struct so
 	}
 	/* Get the command port */
 	errno = 0;
-	uint16_t cmd_port = strtol(args, NULL, 10);
+	uint16_t cmd_port = strtol(args, &args, 10);
 	if (errno != 0)
 	{
-		print(PRNT_WARN, "Malformed REGISTER command. Expected REGISTER <RANK> <CMD_PORT>\n");
+		print(PRNT_WARN, "Malformed REGISTER command. Expected REGISTER <RANK> <CMD_PORT> <CPUS>\n");
 		return 5;
 	}
+	errno = 0;
+	int cpus = strtol(args, NULL, 10);
+	if (errno != 0)
+	{
+		print(PRNT_WARN, "Malformed REGISTER command. Expected REGISTER <RANK> <CMD_PORT> <CPUS>\n");
+		return 5;
+	}
+
 	/* Sending from random port - we need to response to the command port */
 	switch (from -> ss_family)
 	{
@@ -219,22 +350,23 @@ static int command_register(PARALLEL_WRAPPER *par_wrapper, char *args, struct so
 		return 6;
 	}
 	
-	if (par_wrapper -> processors[rank-1] != (struct PROC *)NULL)
+	if (par_wrapper -> processors[rank] != (struct PROC *)NULL)
 	{
 		print(PRNT_WARN, "Rank %d has already been registered. Skipping.\n", rank);
 		return 5;
 	}
 	/* Add to the list (-1's because rank 0 is not in the list)*/
 	pthread_mutex_lock(&par_wrapper -> mutex);
-	par_wrapper -> processors[rank-1] = (struct PROC *)calloc(1, sizeof(struct PROC));
-	par_wrapper -> processors[rank-1] -> sinful = get_hostname_by_source(from, len);
-	par_wrapper -> processors[rank-1] -> command_port = cmd_port;
-	par_wrapper -> processors[rank-1] -> rank = rank;
+	par_wrapper -> processors[rank] = (struct PROC *)calloc(1, sizeof(struct PROC));
+	par_wrapper -> processors[rank] -> sinful = get_hostname_by_source(from, len);
+	par_wrapper -> processors[rank] -> command_port = cmd_port;
+	par_wrapper -> processors[rank] -> rank = rank;
+	par_wrapper -> processors[rank] -> cpus = cpus;
 	par_wrapper -> registered_processors++;
 	/* Set the last update time */
-	time(&par_wrapper -> processors[rank-1] -> last_update);
+	time(&par_wrapper -> processors[rank] -> last_update);
 	pthread_mutex_unlock(&par_wrapper -> mutex);
-	print(PRNT_INFO, "Successfully registered rank %d\n", rank);
+	print(PRNT_INFO, "Successfully registered rank %d. Sinful string: <%s,%d>\n", rank, par_wrapper -> processors[rank] -> sinful, cmd_port);
 	
 	return 0;
 }
@@ -262,7 +394,7 @@ static int command_term(PARALLEL_WRAPPER *par_wrapper, char *args, struct sockad
 
 	/* Send ACK */
 	char buffer[BUFFER_SIZE];
-	sprintf(buffer, "%d", CMD_ACK);
+	sprintf(buffer, "%d %d", CMD_ACK, par_wrapper -> rank);
 	int sent = sendto(par_wrapper -> command_socket, buffer, strlen(buffer), 0, (struct sockaddr *)from, len);
 	if (sent < 0)
 	{
@@ -291,7 +423,7 @@ static int command_query(PARALLEL_WRAPPER *par_wrapper, char *args, struct socka
 	char buffer[BUFFER_SIZE];
 
 	/* Send the reply (CMD_ALIVE) back to the host */
-	sprintf(buffer, "%d", CMD_ACK);
+	sprintf(buffer, "%d %d", CMD_ACK, par_wrapper -> rank);
 	int sent = sendto(par_wrapper -> command_socket, buffer, strlen(buffer), 0, (struct sockaddr *)from, len);
 	if (sent < 0)
 	{

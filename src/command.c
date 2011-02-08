@@ -2,6 +2,7 @@
 #include "log.h"
 
 static int send_command_to_sinful(int, char *sinful_string, char *command);
+static int send_command_to_host_port(int socketfd, char *hostname, uint16_t port, char *command);
 /**
  * Sends a command to the given rank
  */
@@ -35,16 +36,26 @@ int send_command_to_rank(PARALLEL_WRAPPER *par_wrapper, int dest_rank, char *com
 			print(PRNT_WARN, "Unable to send command to rank %d the processor table is not initialized.\n", dest_rank);
 			return 1;
 		}
-		if (par_wrapper -> processors[dest_rank -1] == (struct PROC *)NULL)
+		if (par_wrapper -> processors[dest_rank] == (struct PROC *)NULL)
 		{
 			print(PRNT_WARN, "Unable to send command to rank %d, that rank has not yet registered.\n", dest_rank);
 			return 2;
 		}
 		/* All good, send the command */
-		return send_command_to_sinful(par_wrapper -> command_socket, par_wrapper -> processors[dest_rank -1] -> sinful, command);
+		return send_command_to_host_port(par_wrapper -> command_socket, par_wrapper -> processors[dest_rank] -> sinful, par_wrapper -> processors[dest_rank] -> command_port, command);
 	}
 	return 5; /* We should never get here */
 }	
+
+/**
+ * Wrapper around send_command_to_sinful fro rank 0
+ */
+static int send_command_to_host_port(int socketfd, char *hostname, uint16_t port, char *command)
+{
+	char sinful[1024];
+	snprintf(sinful, 1024, "%s,%d", hostname, port);
+	return send_command_to_sinful(socketfd, sinful, command);
+}
 
 static int send_command_to_sinful(int socketfd, char *sinful_string, char *command)
 {
@@ -90,13 +101,13 @@ static int send_command_to_sinful(int socketfd, char *sinful_string, char *comma
 	hints.ai_socktype = SOCK_DGRAM;
 	hints.ai_flags = AI_ADDRCONFIG;
 
-	print(PRNT_INFO, "Hostname: %s, port %d, char_port: %s\n", hostname, port, char_port);
 	if ((gai_result = getaddrinfo(hostname, char_port, &hints, &info)) != 0)
 	{
 		print(PRNT_ERR, "getaddrinfo: %s\n", gai_strerror(gai_result));
 		free(hostname);
 		return 3;
 	}
+	print(PRNT_INFO, "Sending command '%s' to %s on port %s\n", command, hostname, char_port);
 	curr = info;
 	while (curr != (struct addrinfo *)NULL)
 	{

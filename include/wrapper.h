@@ -20,8 +20,10 @@ typedef struct PROC
 {
 	char *sinful; /**< The sinful string for this processor */
 	int rank; /**< the rank of this processor */
+	int cpus; /**< The number of cpus assigned to this host */
 	uint16_t command_port;
 	time_t last_update; /**< The last update time for this host */
+	int not_unique; /**< Unique host */
 } PROC;
 
 /**
