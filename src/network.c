@@ -5,6 +5,11 @@
 #include "log.h"
 #include "commands.h"
 
+/* STAT */
+#include <sys/types.h>
+#include <sys/stat.h>
+
+
 /* Local Function Prototypes */
 static void * process_command(void *data);
 static int get_bound_dgram_socket(int port);
@@ -12,6 +17,7 @@ static int command_query(PARALLEL_WRAPPER *par_wrapper, char *args, struct socka
 static int command_term(PARALLEL_WRAPPER *par_wrapper, char *args, struct sockaddr_storage *from, socklen_t len);
 static int command_register(PARALLEL_WRAPPER *par_wrapper, char *args, struct sockaddr_storage *from, socklen_t len);
 static int command_ack(PARALLEL_WRAPPER *par_wrapper, char *args, struct sockaddr_storage *from, socklen_t len);
+static int command_create_link(PARALLEL_WRAPPER *par_wrapper, char *args, struct sockaddr_storage *from, socklen_t len);
 static void *keep_alive(void *data);
 static int send_term_signal(PARALLEL_WRAPPER *par_wrapper, int RC);
 static char *get_hostname_by_source(struct sockaddr_storage *ss, socklen_t len);
@@ -241,6 +247,9 @@ static void * process_command(void *data)
 			print(PRNT_INFO, "Received command REGISTER (%d)\n", CMD_REGISTER);
 			command_register(par_wrapper, next, &message -> from, message -> from_len);
 			break;
+		case CMD_CREATE_LINK:
+			print(PRNT_INFO, "Received command CREATE_LINK (%d)\n", CMD_CREATE_LINK);
+			command_create_link(par_wrapper, next, &message -> from, message -> from_len);
 		default:
 			print(PRNT_WARN, "Unknown command %d\n", command);
 			break;
@@ -251,12 +260,59 @@ static void * process_command(void *data)
 	pthread_exit(NULL);
 }
 
+static int command_create_link(PARALLEL_WRAPPER *par_wrapper, char *args, struct sockaddr_storage *from, socklen_t len)
+{
+	char *src, *next, *dest;
+	/* The assumed structure of the command is CREATE_LINK <SOURCE> <DEST> */
+	errno = 0;
+	const char delim[] = {'\t', ' ', '\n'};
+	src = strtok_r(args, delim, &next);
+	if (src == NULL || next == NULL || src == next)
+	{
+		print(PRNT_WARN, "Malformed CREATE_LINK command. Expected CREATE_LINK <SRC> <DEST>\n");
+		return 1;
+	}
+	dest = strtok_r(NULL, delim, &next);
+	if (dest == NULL)
+	{
+		print(PRNT_WARN, "Malformed CREATE_LINK command. Expected CREATE_LINK <SRC> <DEST>\n");
+		return 2;
+	}
+	/* Check that the source exists as a directory */
+	struct stat st;
+	if (stat(src, &st) != 0)
+	{
+		print(PRNT_WARN, "Unable to create softlink from %s to %s. The source does not exists\n", src, dest);
+		return 3;
+	}
+	/* Attempt a softlink */
+	if (symlink(src, dest) < 0)
+	{
+		print(PRNT_WARN, "Unable to create softlink from %s to %s.\n");
+		return 4;
+	}
+	SYMLINK *link = (SYMLINK *) calloc(1, sizeof(struct SYMLINK));
+	if (link == (SYMLINK *)NULL)
+	{
+		print(PRNT_WARN, "Unable to allocate space for a new symlink structure\n");
+		return 5;
+	}
+	/* Update the global structure */
+	pthread_mutex_lock(&par_wrapper -> mutex);
+	link -> next = par_wrapper -> symlinks;
+	par_wrapper -> symlinks = link;
+	link -> name = strdup(dest); /* Copy the destination */	
+	pthread_mutex_unlock(&par_wrapper -> mutex);
+	return 0;
+}
+
 static int command_ack(PARALLEL_WRAPPER *par_wrapper, char *args, struct sockaddr_storage *from, socklen_t len)
 {
+	char *str = NULL;
 	/* The assumed structure of the command is ACK <RANK> */
 	errno = 0;
-	int rank = strtol(args, NULL, 10);
-	if (errno != 0)
+	int rank = strtol(args, &str, 10);
+	if (errno != 0 || str == args)
 	{
 		print(PRNT_WARN, "Malformed ACK command. Expected ACK <RANK>\n");
 		return 1;
@@ -540,7 +596,20 @@ char *get_hostname_sinful_string(int port)
 	gethostname(host, 1024);
 
 	print(PRNT_INFO, "%s\n", host);
-	char *sinful = malloc(sizeof(char) * BUFFER_SIZE);
+	char *sinful = get_hostname(); 
+	snprintf(host, 1024, ",%d", port); 
+	strcat(sinful, host);
+	return sinful;
+}
+
+char *get_hostname(void)
+{
+	/* Get the hostname */
+	char host[1024];
+	gethostname(host, 1024);
+
+	print(PRNT_INFO, "%s\n", host);
+	char *hostname = malloc(sizeof(char) * BUFFER_SIZE);
 	int RC;
 
 	struct addrinfo hints, *info, *curr;
@@ -555,11 +624,9 @@ char *get_hostname_sinful_string(int port)
     }
 	for (curr = info; curr != NULL; curr = curr -> ai_next)
 	{
-	 	get_ip_str((const struct sockaddr *)curr -> ai_addr, sinful, INET6_ADDRSTRLEN);
+	 	get_ip_str((const struct sockaddr *)curr -> ai_addr, hostname, INET6_ADDRSTRLEN);
 	}
-	snprintf(host, 1024, ",%d", port); 
-	strcat(sinful, host);
-	return sinful;
+	return hostname;
 }
 
 static char *get_hostname_by_source(struct sockaddr_storage *ss, socklen_t len)

@@ -35,6 +35,12 @@ typedef struct ACK
 	int rank;
 } ACK; 
 
+typedef struct SYMLINK
+{
+	struct SYMLINK *next;
+	char *name;
+} SYMLINK;
+
 typedef struct PARALLEL_WRAPPER
 {
 	unsigned int low_port;
@@ -54,6 +60,7 @@ typedef struct PARALLEL_WRAPPER
 	struct PROC **processors;
 	int registered_processors;
 	struct ACK *ack;
+	struct SYMLINK *symlinks;
 } PARALLEL_WRAPPER;
 
 typedef struct MESSAGE

@@ -74,7 +74,7 @@ int main(int argc, char **argv)
 		par_wrapper -> processors = (struct PROC **) calloc(par_wrapper -> num_procs, sizeof(struct PROC *)); /* Don't need one for ourselves */
 		par_wrapper -> registered_processors++;
 		par_wrapper -> processors[0] = (struct PROC *) calloc(1, sizeof(struct PROC));
-		par_wrapper -> processors[0] -> sinful = get_hostname_sinful_string(par_wrapper -> command_port);
+		par_wrapper -> processors[0] -> sinful = get_hostname();
 ;
 		par_wrapper -> processors[0] -> cpus = 1;
 		par_wrapper -> processors[0] -> command_port = par_wrapper -> command_port;
@@ -97,8 +97,7 @@ int main(int argc, char **argv)
 	{	
 		pthread_mutex_lock(&par_wrapper -> mutex);
 		par_wrapper -> rank0_sinful = get_hostname_sinful_string(par_wrapper -> command_port);
-		pthread_mutex_unlock(&par_wrapper -> mutex);
-		
+		pthread_mutex_unlock(&par_wrapper -> mutex);	
 		
 		/* Wait for rank 0 sinful string */
 		char *temp = malloc(strlen(par_wrapper -> rank0_sinful) + 10);
@@ -112,6 +111,27 @@ int main(int argc, char **argv)
 		}
 		print(PRNT_INFO, "Successfully set sinful string RANK0_SINFUL=%s\n", temp);
 		free(temp);
+		
+		/* Determine the number of processors */
+		int procs = 1;
+		char *RequestCpus = NULL;
+		char *next;
+		int length = chirp_client_get_job_attr(par_wrapper -> chirp, "RequestCpus", &RequestCpus);
+		if (length > 0)
+		{
+			RequestCpus[length] = '\0';
+		}
+		errno = 0;
+		procs = strtol(RequestCpus, &next, 10);
+		if (errno != 0 || next == RequestCpus)
+		{
+			print(PRNT_WARN, "Failed to get RequestCpus = %s\n", RequestCpus);
+			procs = 1;
+		}
+
+		pthread_mutex_lock(&par_wrapper -> mutex);
+		par_wrapper -> processors[0] -> cpus = procs;
+		pthread_mutex_unlock(&par_wrapper -> mutex);	
 
 		/* Busy wait for all nodes to register */
 		while (par_wrapper -> registered_processors < par_wrapper -> num_procs)
@@ -124,8 +144,20 @@ int main(int argc, char **argv)
 		int i;
 		for(i = 0; i < par_wrapper -> num_procs; i++)
 		{
-			printf("%s:%d\n", par_wrapper -> processors[i] -> sinful, i);
-		}		
+			printf("%s #Rank %d, Procs %d\n", par_wrapper -> processors[i] -> sinful, i, par_wrapper -> processors[i] -> cpus);
+		}
+		/* Attempt to look up "ShouldTransferFiles" */
+		char *ShouldTransferFiles = NULL;
+		chirp_client_get_job_attr(par_wrapper -> chirp, "ShouldTransferFiles", &ShouldTransferFiles);
+		if (strstr(ShouldTransferFiles, "NO") == NULL && strstr(ShouldTransferFiles, "NEVER") == NULL) 
+		{
+			print(PRNT_INFO, "TransferFiles Required - creating fake shared file system\n");
+		}
+		else
+		{
+			print(PRNT_INFO, "No Transfer Necessary\n");
+		}
+
 	}
 	else
 	{
@@ -135,7 +167,7 @@ int main(int argc, char **argv)
 		while ( 1 )
 		{
 			length = chirp_client_get_job_attr(par_wrapper -> chirp, "RANK0_SINFUL", &sinful_string);
-			if (length > 0 && sinful_string != (char *)NULL && strcmp(sinful_string, "\"UNDEFINED\"") != 0 && strcmp(sinful_string, "UNDEFINED") != 0)
+			if (length > 0 && sinful_string != (char *)NULL && strncmp(sinful_string, "\"UNDEFINED\"", 11) != 0 && strncmp(sinful_string, "UNDEFINED", 9) != 0)
 			{
 				break;
 			}
@@ -150,9 +182,26 @@ int main(int argc, char **argv)
 		pthread_mutex_unlock(&par_wrapper -> mutex);
 		print(PRNT_INFO, "Got sinful string: %s\n", par_wrapper -> rank0_sinful);
 
+		/* Determine the number of processors */
+		int procs = 1;
+		char *RequestCpus = NULL;
+		char *next;
+		length = chirp_client_get_job_attr(par_wrapper -> chirp, "RequestCpus", &RequestCpus);
+		if (length > 0)
+		{
+			RequestCpus[length] = '\0';
+		}
+		errno = 0;
+		procs = strtol(RequestCpus, &next, 10);
+		if (errno != 0 || next == RequestCpus)
+		{
+			print(PRNT_WARN, "Failed to get RequestCpus = %s\n", RequestCpus);
+			procs = 1;
+		}
+
 		/* Register with rank 0 */
 		char command[1024];
-		snprintf(command, 1024, "%d %d %d %d", CMD_REGISTER, par_wrapper -> rank, par_wrapper -> command_port, 1);
+		snprintf(command, 1024, "%d %d %d %d", CMD_REGISTER, par_wrapper -> rank, par_wrapper -> command_port, procs);
 		/* Clear the ack */
 		pthread_mutex_lock(&par_wrapper -> mutex);
 		par_wrapper -> ack -> received = 0;
