@@ -61,4 +61,7 @@ extern int parse_args(int argc, char **argv, parallel_wrapper *par_wrapper);
 extern void parse_environment_vars(parallel_wrapper *par_wrapper);
 
 extern void default_pthead_attr(pthread_attr_t *attr);
+
+extern int chirp_info(parallel_wrapper *par_wrapper);
+
 #endif /* WRAPPER_H */

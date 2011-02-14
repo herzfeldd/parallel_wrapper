@@ -16,10 +16,6 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	/* Fill in the default values for port ranges */
-	par_wrapper -> low_port = 51000;
-	par_wrapper -> high_port = 61000;
-
 	/* Create structures for this machine */
 	par_wrapper -> this_machine = calloc(1, sizeof(struct machine));
 	if (par_wrapper -> this_machine == (machine *)NULL)
@@ -27,10 +23,35 @@ int main(int argc, char **argv)
 		print(PRNT_ERR, "Unable to allocate space for this machine\n");
 		return 1;
 	}
-	
+
+	/* Fill in the default values for port ranges */
+	par_wrapper -> low_port = 51000;
+	par_wrapper -> high_port = 61000;
+	/* Fill in other default values */
+	par_wrapper -> this_machine -> rank = -1;
+	par_wrapper -> num_procs = -1; 
+	par_wrapper -> command_socket = -1;
+	par_wrapper -> mpi_executable = strdup("mpiexec.hydra");
+	/* Default mutex state */
+	pthread_mutex_init(&par_wrapper -> mutex, NULL);
+
 	/* Parse environment variables and command line arguments */
 	parse_environment_vars(par_wrapper);
 	parse_args(argc, argv, par_wrapper);
+
+	/* Check that required values are filled in */
+	if (par_wrapper -> this_machine -> rank < 0)
+	{
+		print(PRNT_ERR, "Invalid rank (%d). Environment variable or command option not set.\n", 
+			par_wrapper -> this_machine -> rank);
+		return 2;
+	}
+	if (par_wrapper -> num_procs < 0)
+	{
+		print(PRNT_ERR, "Invalid number of processors (%d). Environment variable or command option not set.\n",
+			par_wrapper -> num_procs);
+		return 2;
+	}
 
 	/* Get the IP address for this machine */
 	par_wrapper -> this_machine -> ip_addr = get_ip_addr();
@@ -66,35 +87,21 @@ int main(int argc, char **argv)
 	else
 	{
 		par_wrapper -> master = (machine *)calloc(1, sizeof(struct machine));
-		if (par_wrapper -> master)
+		if (par_wrapper -> master == (machine *)NULL)
 		{
 			print(PRNT_ERR, "Unable to allocate space for master\n");
 			return 2;
 		}
+		par_wrapper -> master -> rank = MASTER;
 	}
 
-	struct chirp_client *chirp = chirp_client_connect_default();
-	if (chirp == (struct chirp_client *)NULL)
-	{
-		print(PRNT_ERR, "Unable to open chirp context\n");
-		return 1;
-	}
-
-	RC = get_chirp_integer(chirp, "RequestCpus", &par_wrapper -> this_machine -> cpus);
+	/* Gather the necessary chirp information */
+	RC = chirp_info(par_wrapper);
 	if (RC != 0)
 	{
-		print(PRNT_WARN, "Failed to get RequestCpus, assuming 1\n");
-		par_wrapper -> this_machine -> cpus = 1;
+		print(PRNT_ERR, "Failure sending/recieving chirp information\n");
+		return 2;
 	}
-
-	/* Get the initial working directory */
-	RC = get_chirp_string(chirp, "Iwd", &par_wrapper -> this_machine -> iwd);
-	if (RC != 0)
-	{
-		par_wrapper -> this_machine -> iwd = getcwd(NULL, 0); /* Allocates space */
-		print(PRNT_WARN, "Failed to get Iwd, assuming current directory: %s\n",
-				par_wrapper -> this_machine -> iwd);
-	}	
 
 	/* Create the listener */
 	pthread_create(&par_wrapper -> listener, &attr, &udp_server, (void *)par_wrapper);

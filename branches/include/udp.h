@@ -3,6 +3,7 @@
 
 typedef enum CMD
 {
+	CMD_NULL = 0, /**< NULL command */
 	CMD_TERM = 10, /**< Terminate */
 	CMD_QUERY, /**< Query status */
 	CMD_ACK, /**< I am alive */
