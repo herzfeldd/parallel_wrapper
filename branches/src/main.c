@@ -16,7 +16,7 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	/* Fill in the default values */
+	/* Fill in the default values for port ranges */
 	par_wrapper -> low_port = 51000;
 	par_wrapper -> high_port = 61000;
 
@@ -39,6 +39,20 @@ int main(int argc, char **argv)
 	{
 		print(PRNT_ERR, "Unable to get the IP address for this machine\n");
 		return 2;
+	}
+	
+	/* Get a command port for this machine */
+	RC = get_bound_dgram_socket_by_range(par_wrapper -> low_port, 
+		par_wrapper -> high_port, &par_wrapper -> this_machine -> port, 
+		&par_wrapper -> command_socket);		
+	if (RC != 0)
+	{
+		print(PRNT_ERR, "Unable to bind to command socket\n");
+		return 2;
+	}
+	else
+	{
+		debug(PRNT_INFO, "Bound to command port: %d\n", par_wrapper -> this_machine -> port);
 	}
 
 	/** 
