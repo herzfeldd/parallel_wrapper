@@ -16,6 +16,10 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
+	/* Fill in the default values */
+	par_wrapper -> low_port = 51000;
+	par_wrapper -> high_port = 61000;
+
 	/* Create structures for this machine */
 	par_wrapper -> this_machine = calloc(1, sizeof(struct machine));
 	if (par_wrapper -> this_machine == (machine *)NULL)
@@ -80,6 +84,8 @@ int main(int argc, char **argv)
 
 	/* Create the listener */
 	pthread_create(&par_wrapper -> listener, &attr, &udp_server, (void *)par_wrapper);
+
+	pthread_join(par_wrapper -> listener, NULL);
 
 	return 0;
 }
