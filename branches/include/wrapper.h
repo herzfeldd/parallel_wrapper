@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include "network_util.h"
 #include "log.h"
 
 #define MASTER (0u)

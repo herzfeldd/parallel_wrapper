@@ -25,9 +25,18 @@ int main(int argc, char **argv)
 	parse_environment_vars(par_wrapper);
 	parse_args(argc, argv, par_wrapper);
 
+	/* Get the IP address for this machine */
+	par_wrapper -> this_machine -> ip_addr = get_ip_addr();
+	debug(PRNT_INFO, "IP Addr: %s\n", par_wrapper -> this_machine -> ip_addr);
+	if (par_wrapper -> this_machine -> ip_addr == (char *)NULL)
+	{
+		print(PRNT_ERR, "Unable to get the IP address for this machine\n");
+		return 2;
+	}
+
 	/** 
 	 * If this is rank 0, point rank 0 to this_machine, otherwise allocate
-	 * a new structure
+	 * a new structure for the master
 	 */
 	if (par_wrapper -> this_machine -> rank == MASTER)
 	{
