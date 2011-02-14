@@ -5,6 +5,9 @@
 int main(int argc, char **argv)
 {
 	int RC;
+	pthread_attr_t attr;
+	default_pthead_attr(&attr);
+
 	/* Allocate a new parallel_wrapper structure */
 	parallel_wrapper *par_wrapper = (parallel_wrapper *)calloc(1, sizeof(struct parallel_wrapper));
 	if (par_wrapper == (parallel_wrapper *)NULL)
@@ -74,6 +77,9 @@ int main(int argc, char **argv)
 		print(PRNT_WARN, "Failed to get Iwd, assuming current directory: %s\n",
 				par_wrapper -> this_machine -> iwd);
 	}	
-	
+
+	/* Create the listener */
+	pthread_create(&par_wrapper -> listener, &attr, &udp_server, (void *)par_wrapper);
+
 	return 0;
 }

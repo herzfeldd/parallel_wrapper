@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include "udp.h"
 #include "network_util.h"
 #include "log.h"
 
@@ -19,18 +20,20 @@
 
 typedef struct machine
 {
+	uint16_t port; /**< Command Port */
 	int rank; /**< Rank [0, N-1] */
 	int cpus; /**< The number of CPUs for this rank */
+	int unique; /**< Flag noting if this a unique host */
 	char *iwd; /**< Initial working directory */
-	int port; /**< Command Port */
 	char *ip_addr; /**< The IP address associated with the machine */
 	struct timeval last_alive;
-	int unique; /**< Flag noting if this a unique host */
 } machine;
 
 typedef struct parallel_wrapper
 {
+	int executable_length; /**< The length of the executable array */
 	int num_procs; /**< The number of processors */
+	int command_socket; /**< The FD for the command socket */
 	uint16_t low_port; /**< The lower port */
 	uint16_t high_port; /**< High port */
 	machine *this_machine; /**< This machine */
@@ -39,7 +42,6 @@ typedef struct parallel_wrapper
 	pthread_mutex_t mutex; /**< Semaphore */
 	char *mpi_flags; /**< Flags to the MPI executable */
 	char *mpi_executable; /**< MPI Executable */
-	int executable_length;
 	char **executable; /**< Array holding the passed executable and args */
 } parallel_wrapper;
 
@@ -58,4 +60,5 @@ extern int parse_args(int argc, char **argv, parallel_wrapper *par_wrapper);
  */
 extern void parse_environment_vars(parallel_wrapper *par_wrapper);
 
+extern void default_pthead_attr(pthread_attr_t *attr);
 #endif /* WRAPPER_H */
