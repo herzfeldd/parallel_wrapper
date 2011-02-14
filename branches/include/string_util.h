@@ -21,6 +21,7 @@ typedef struct strarray
 extern void free_strarray(strarray *array);
 extern strarray *strsplit(char *delim, char *string);
 extern int count_tokens(char *delim, char *string);
-void print_strarray(strarray *array);
+extern void print_strarray(strarray *array);
+extern int remove_quotes(char *string);
 
 #endif /* STRING_UTIL_H */

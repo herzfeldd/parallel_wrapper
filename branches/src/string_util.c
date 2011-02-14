@@ -205,3 +205,43 @@ int count_tokens(char *delim, char *string)
 	}	
 	return tokens;
 }
+
+/**
+ * Remove the quotes from a string
+ * 
+ * Removes the quotes from a string (both single and double
+ * quotes). The removal is performed in place.
+ *
+ * @param The string to remove the quotes from
+ * @return 0 if successful, failure otherwise
+ */
+int remove_quotes(char *string)
+{
+	if (string == (char *)NULL || strlen(string) == 0)
+	{
+		return 0;
+	}
+	int length = strlen(string);
+	int i = 0;
+	int index = 0;
+	while (i < length && index < length)
+	{
+		if (string[i] == '"' || string[i] == '\'')
+		{
+			i++;
+		}
+		if (i < length)
+		{
+			string[index] = string[i];
+		}
+		i++;
+		index++;
+	}
+	if (index < length)
+	{
+		string[index-1] = '\0';
+	}
+	return 0;
+}
+
+

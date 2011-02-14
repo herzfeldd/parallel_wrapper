@@ -1,13 +1,14 @@
 #ifndef TIMER_H
 #define TIMER_H
 #include <time.h>
+#include <sys/time.h>
 #include <stdlib.h>
 /**
  * A basic timer structure
  */
 typedef struct timer
 {
-	time_t start;
+	struct timeval start;
 	struct timeval delay;
 	struct timer *next;
 } timer;

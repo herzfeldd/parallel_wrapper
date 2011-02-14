@@ -1,0 +1,21 @@
+EXECUTABLE	= ../parallel_wrapper
+LIB		= -L../lib
+INCLUDE		= -I../include
+SOURCE 		= chirp_util.c log.c main.c network_util.c string_util.c \
+		  threads.c  timer.c
+DETAIL		= -DDETAIL
+CFLAGS		= -g -O2 -Wall -Werror ${INCLUDE} ${DETAIL}
+
+# Chirp library
+CHIRP_LIB	= -lchirp_client_x86-64
+LDFLAGS		= ${LIB} ${CHIRP_LIB}
+
+# Define the source file locations
+SRC		= ${SOURCE:%.c=../src/%.c}
+OBJ		= ${SRC:%.c=%.o}
+
+${EXECUTABLE}: ${OBJ}
+	${CC} -o $@ ${LDFLAGS} ${OBJ} ${LDLIBS} ${CHIRP_LIB} -lpthread
+
+clean:
+	rm -rf *.o ${OBJ} ${EXECUTABLE}

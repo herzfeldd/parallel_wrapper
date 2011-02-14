@@ -1,6 +1,6 @@
 #include "timer.h"
 #include "log.h"
-
+#include <stdio.h>
 /**
  * Returns a time with the defined periodicity
  *
@@ -25,7 +25,7 @@ timer *new_timer(long int sec, long int usec)
 	new_timer -> delay.tv_usec = usec;
 	new_timer -> next = NULL;
 	/* Get the current time */
-	time(&new_timer -> start);
+	gettimeofday(&new_timer -> start, NULL);
 	return new_timer;
 }
 
@@ -41,7 +41,7 @@ timer *new_timer(long int sec, long int usec)
  */
 struct timeval time_to_next_firing(timer *x)
 {
-	time_t curr_time;
+	struct timeval curr_time;
 	struct timeval next_firing;
 	next_firing.tv_usec = 0;
 	next_firing.tv_sec = 0;
@@ -50,15 +50,16 @@ struct timeval time_to_next_firing(timer *x)
 		return next_firing; /* Can't really do anything */
 	}
 	/* Get the current time */
-	time(&curr_time);
+	gettimeofday(&curr_time, NULL);
 	/* Subtract the two times */
-	double diff_time = difftime(curr_time, x -> start);
-	long int total_usec = x -> delay.tv_sec * 1000000 + x -> delay.tv_usec;
-	long int total_diff_time = (long int) (diff_time * 1000000);
-	long int remaining_time = total_diff_time % total_usec;
+	struct timeval diff_time;
+	timersub(&curr_time, &x -> start, &diff_time);
+	long int remaining_time = (diff_time.tv_usec + diff_time.tv_sec * 1000000) % 
+		(x -> delay.tv_usec + x -> delay.tv_sec * 1000000);
 	/* Place back in a timeval structure */
-	next_firing.tv_usec = x -> delay.tv_usec - (remaining_time % 1000000);
-	next_firing.tv_sec = x -> delay.tv_sec - (remaining_time / 1000000);
+	next_firing.tv_usec = (remaining_time % 1000000);
+	next_firing.tv_sec = (remaining_time / 1000000);
+	timersub(&x-> delay, &next_firing, &next_firing);
 	return next_firing;
 }
 
@@ -140,7 +141,6 @@ int next_timer(timer_list *list, struct timeval *next_timer)
 	min_time = next_firing.tv_usec + next_firing.tv_sec * 1000000;
 	
 	timer *curr = list -> head -> next;
-	timer *prev = list -> head;
 	while (curr != (timer *)NULL)
 	{
 		next_firing = time_to_next_firing(curr);
