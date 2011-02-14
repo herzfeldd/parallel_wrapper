@@ -10,6 +10,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+int verbose = 0; /**< Verbose Flag */
+
 /* Define functions for printing (both in the debug case and the non-debug case) */
 void print_message(enum PRINT_LEVEL type,  char *file, int line, __const char *__restrict __format, ...)
 {
@@ -73,7 +75,7 @@ void debug_message(enum PRINT_LEVEL type,  char *file, int line, __const char *_
 
 	char *debug_val;
 	debug_val = getenv ("PARALLEL_DEBUG");
-	//if (debug_val != NULL || type == PRNT_ERR)
+	if (debug_val != NULL || type == PRNT_ERR || verbose)
 	{
 		va_list args;
 		va_start(args, __format);

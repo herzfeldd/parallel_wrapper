@@ -12,6 +12,8 @@ typedef enum PRINT_LEVEL
 #define print(type, format, ...) print_message(type, __FILE__, __LINE__, format, ##__VA_ARGS__)
 #define debug(type, format, ...) debug_message(type, __FILE__, __LINE__, format, ##__VA_ARGS__)
 
+extern int verbose;
+
 /**
  * Print a DEBUG message 
  */

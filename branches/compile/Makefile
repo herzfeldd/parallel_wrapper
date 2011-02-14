@@ -2,7 +2,7 @@ EXECUTABLE	= ../parallel_wrapper
 LIB		= -L../lib
 INCLUDE		= -I../include
 SOURCE 		= chirp_util.c log.c main.c network_util.c string_util.c \
-		  threads.c  timer.c
+		  threads.c timer.c parse_args_env.c
 DETAIL		= -DDETAIL
 CFLAGS		= -g -O2 -Wall -Werror ${INCLUDE} ${DETAIL}
 

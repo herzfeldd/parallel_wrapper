@@ -1,4 +1,4 @@
-
+#include <errno.h>
 #include "string_util.h"
 #include "log.h"
 
@@ -241,6 +241,38 @@ int remove_quotes(char *string)
 	{
 		string[index-1] = '\0';
 	}
+	return 0;
+}
+
+/**
+ * Parses the integer value of a string.
+ *
+ * Parses the integer value of string and places the result in ``value''.
+ * If an error occurs, ``value'' is left unchanged and a non-zero return
+ * value is provided. 
+ *
+ * @param string The integer string to parse
+ * @param value (output) The final value
+ * @return 0 if success, otherwise failure
+ */
+int parse_integer(char *string, int *value)
+{
+	if (string == (char *)NULL)
+	{
+		return 1;
+	}
+	if (value == (int *)NULL)
+	{
+		return 2;
+	}
+	char *next = NULL;
+	errno = 0;
+	int new_value = strtol(string, &next, 10); /* Base 10 */
+	if (errno != 0 || next == (char *)NULL || string == next)
+	{
+		return 3;
+	}
+	*value = new_value;
 	return 0;
 }
 
