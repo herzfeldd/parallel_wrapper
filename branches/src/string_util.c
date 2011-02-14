@@ -244,4 +244,56 @@ int remove_quotes(char *string)
 	return 0;
 }
 
-
+/**
+ * Remove preceeding or trailing whitespace
+ *
+ * @param string The string to trim
+ * @return 0 if success, otherwise failure
+ */
+int trim(char *string)
+{
+	int i;
+	if (string == (char *)NULL || strlen(string) == 0)
+	{
+		return 0; /* Nothing to do */
+	}
+	int length = strlen(string);
+	int start_index = 0;
+	int end_index = length;
+	while (start_index < length)
+	{
+		if ((string[start_index] == ' ') || (string[start_index] == '\t') 
+			|| (string[start_index] == '\n') || (string[start_index] == '\r'))
+		{
+			start_index++;
+		}
+		else
+		{
+			break;
+		}
+	}
+	/* Start at the end and work backwards */
+	while (end_index > 1)
+	{
+		if ((string[end_index-1] == ' ') || (string[end_index-1] == '\t') 
+			|| (string[end_index-1] == '\n') || (string[end_index-1] == '\r'))
+		{
+			end_index--;
+		}
+		else
+		{
+			break;
+		}
+	}
+	if (start_index >= end_index)
+	{
+		string[0] = '\0';
+		return 0;
+	}
+	for (i = start_index; i < end_index; i++)
+	{
+		string[i - start_index] = string[i];
+	}
+	string[end_index - start_index] = '\0';
+	return 0;
+}

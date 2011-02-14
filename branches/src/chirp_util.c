@@ -39,6 +39,7 @@ int get_chirp_integer(struct chirp_client *chirp, const char *key, int *value)
 	char_value[str_len] = '\0';
 	/* Replace any quotation marks */
 	remove_quotes(char_value);
+	trim(char_value);
 	/* Attempt to convert the result into an int */
 	errno = 0;
 	int new_value = (int) strtol(char_value, &next, 10); /* Base 10 */
@@ -88,6 +89,7 @@ int get_chirp_string(struct chirp_client *chirp, const char *key, char **value)
 	char_value[str_len] = '\0';
 	/* Replace any quotation marks */
 	remove_quotes(char_value);
+	trim(char_value);
 	/* Check if the value is undefined */
 	if (! strncmp("UNDEFINED", char_value, str_len) || 
 			! strncmp("undefined", char_value, str_len))
