@@ -329,3 +329,66 @@ int trim(char *string)
 	string[end_index - start_index] = '\0';
 	return 0;
 }
+
+/**
+ * Append two paths
+ *
+ * Attempt join two paths, a base directory and a presumed relative
+ * path to a file within that base directory. The paths are seperated by
+ * the UNIX path seperator ('/')
+ * 
+ * @param The initial path
+ * @param the second path
+ * @return The joined paths or NULL on failure
+ */
+char *join_paths(const char *path_1, const char *path_2)
+{
+	char *output_path = (char *) NULL;
+	if (path_1 == (char *)NULL)
+	{
+		output_path = (char *) malloc(sizeof(char) * strlen(path_2));
+		strcpy(output_path, path_2);
+		return output_path;
+	}
+	if (path_2 == (char *)NULL)
+	{
+		output_path = (char *) malloc(sizeof(char) * strlen(path_1));
+		strcpy(output_path, path_1);
+		return output_path;
+	}
+	/* OK, we have both paths, we can start combining */
+	output_path = (char *) malloc(sizeof(char) * strlen(path_1) + strlen(path_2) + 1);
+	if (output_path == (char *) NULL)
+	{
+		return NULL;
+	}
+	/* Copy path 1 into the output path */
+	strcpy(output_path, path_1);
+	/* Look at the value immediately before the null terminator, if it
+	 * a '/', remove it. 
+	 */
+	int str1_len = strlen(path_1);
+	while (str1_len > 1 && (output_path[str1_len - 1] == '/' || output_path[str1_len - 1] == '\\'))
+	{
+		output_path[str1_len - 1] = '\0';
+	   str1_len--;	
+	}
+	/* Append the seperator (/) */
+	strcat(output_path, "/");
+	/* Append the second path, removing any leading / */
+	int str2_len = strlen(path_2);
+	int i;
+	int start_index = 0;
+	while (start_index < str2_len && (path_2[start_index] == '/' || path_2[start_index] == '\\'))
+	{
+		start_index++;
+	}
+	int output_len = strlen(output_path);
+	for (i = start_index; i < str2_len; i++)
+	{
+		output_path[output_len + i - start_index] = path_2[i];
+	}
+	output_path[output_len + i] = '\0'; /* Null terminate */
+
+	return output_path;
+}

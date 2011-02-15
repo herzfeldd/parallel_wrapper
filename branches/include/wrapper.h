@@ -44,6 +44,7 @@ typedef struct parallel_wrapper
 	machine *master; /**< The master machine */
 	pthread_t listener; /**< The pthread associated with the network listener */
 	pthread_mutex_t mutex; /**< Semaphore */
+	char *scratch_dir; /**< The scratch directory to use */
 	char *mpi_flags; /**< Flags to the MPI executable */
 	char *mpi_executable; /**< MPI Executable */
 	char *shared_fs; /**< The shared file system */

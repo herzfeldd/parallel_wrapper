@@ -512,10 +512,12 @@ static int handle_register(struct udp_message *message)
 			free(ip_addr);
 			return 5;
 		}
+		pthread_mutex_lock(&message -> par_wrapper -> mutex);
 		message -> par_wrapper -> machines[rank] -> ip_addr = strdup(ip_addr);
 		message -> par_wrapper -> machines[rank] -> rank = rank;
 		message -> par_wrapper -> machines[rank] -> iwd = strdup(message -> args -> strings[2]);
 		message -> par_wrapper -> machines[rank] -> port = port;	
+		pthread_mutex_unlock(&message -> par_wrapper -> mutex);
 	}
 	else
 	{

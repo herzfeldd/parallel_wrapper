@@ -23,7 +23,8 @@ extern strarray *strsplit(char *delim, char *string);
 extern int count_tokens(char *delim, char *string);
 extern void print_strarray(strarray *array);
 extern int remove_quotes(char *string);
-int parse_integer(char *string, int *value);
+extern int parse_integer(char *string, int *value);
 extern int trim(char *string);
+extern char *join_paths(const char *path_1, const char *path_2);
 
 #endif /* STRING_UTIL_H */

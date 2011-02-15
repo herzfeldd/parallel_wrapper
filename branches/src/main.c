@@ -1,6 +1,7 @@
 
 #include "wrapper.h"
 #include "chirp_util.h"
+#include "scratch.h"
 #include <signal.h>
 
 int main(int argc, char **argv)
@@ -112,7 +113,11 @@ int main(int argc, char **argv)
 		}
 		par_wrapper -> master -> rank = MASTER;
 	}
+	
+	/* Create the scratch directory */
+	create_scratch(par_wrapper);
 
+	exit(0);
 	/* Gather the necessary chirp information */
 	RC = chirp_info(par_wrapper);
 	if (RC != 0)

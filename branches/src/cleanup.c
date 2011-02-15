@@ -1,5 +1,6 @@
 
 #include "wrapper.h"
+#include "scratch.h"
 #include <signal.h>
 #include <setjmp.h>
 int exit_flag = 0;
@@ -24,6 +25,9 @@ void cleanup(parallel_wrapper *par_wrapper, int return_code)
 {
 	/* Lock the parallel_wrapper structure */
 	pthread_mutex_lock(&par_wrapper -> mutex);
+
+	/* Clean up the scratch directory */
+	cleanup_scratch(par_wrapper -> scratch_dir);
 
 	/* Unlink all softlinks */
 	if (is_valid_sll(par_wrapper -> symlinks))
