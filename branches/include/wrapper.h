@@ -43,6 +43,7 @@ typedef struct parallel_wrapper
 	char *mpi_flags; /**< Flags to the MPI executable */
 	char *mpi_executable; /**< MPI Executable */
 	char **executable; /**< Array holding the passed executable and args */
+	machine **machines; /**< All machines (for the master only) */
 } parallel_wrapper;
 
 /**

@@ -1,6 +1,8 @@
 #ifndef UDP_H
 #define UDP_H
 
+#include "network_util.h"
+
 typedef enum CMD
 {
 	CMD_NULL = 0, /**< NULL command */
@@ -13,5 +15,7 @@ typedef enum CMD
 } CMD;
 
 extern void *udp_server(void *ptr);
+extern int ack(int socketfd, int rank, const struct sockaddr *addr);
+extern int term(int socketfd, int return_code, char *ip_addr, uint16_t port);
 
 #endif /* UDP_H */

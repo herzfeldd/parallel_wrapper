@@ -1,5 +1,10 @@
 #include "wrapper.h"
 #include "string_util.h"
+
+/* STAT */
+#include <sys/types.h>
+#include <sys/stat.h>
+
 /**
  * Define a structure which represents a single UDP message
  */
@@ -114,6 +119,8 @@ void *udp_server(void *ptr)
 			}
 			/* Fill in the message structure as well as we can */
 			message -> par_wrapper = par_wrapper;
+			/* NOTE: This must be set before calling receive from */
+			message -> len = sizeof(struct sockaddr_storage);
 			/* Receive the message */
 			recvfrom(par_wrapper -> command_socket, buffer, BUFFER_SIZE, 0, 
 				(struct sockaddr *)&message -> from, &message -> len);
@@ -182,7 +189,7 @@ static void *process_message(void *ptr)
 			RC = handlers[temp].handler(message);
 			if (RC != 0)
 			{
-				print(PRNT_WARN, "Failed to handle command %d\n", command);
+				print(PRNT_WARN, "Failed to handle command %d. RC = %d\n", command, RC);
 			}
 			free_strarray(message -> args);
 			free(message);
@@ -204,25 +211,172 @@ static void *process_message(void *ptr)
 
 static int handle_ack(struct udp_message *message)
 {
-	print(PRNT_INFO, "ACK Handler\n");
+	int RC, rank;
+	/* CMD <RANK> */
+	parallel_wrapper *par_wrapper = message -> par_wrapper;
+	if (par_wrapper -> this_machine -> rank != MASTER)
+	{
+		return 0;
+	}
+	/* Make sure the format is correct */
+	if (message -> args -> dim != 2)
+	{
+		print(PRNT_WARN, "Invalid ACK packet. Expected '<ACK>:<RANK>'\n");
+		return 1;
+	}
+	RC = parse_integer(message -> args -> strings[1], &rank);
+	if (RC != 0)
+	{
+		print(PRNT_WARN, "Failed to parse rank\n");
+		return 2;
+	}
+	if (rank < 0 || rank >= par_wrapper -> num_procs)
+	{
+		print(PRNT_WARN, "Invalid rank (%d)\n", rank);
+		return 3;
+	}
+	if (par_wrapper -> machines[rank] == (machine *)NULL)
+	{
+		print(PRNT_WARN, "Cannot receive an ACK from rank %d. It has not registered yet\n", rank);
+		return 4;
+	}	
+	/* Make sure that the source matches the registered machine */
+	char *ip_addr = (char *)malloc(INET6_ADDRSTRLEN * sizeof(char));
+	if (ip_addr == (char *)NULL)
+	{
+		print(PRNT_WARN, "Unable to allocate space for an IP address string\n");
+		return 3;
+	}
+	RC = ip_str_from_sockaddr((struct sockaddr *)&message -> from,
+		   ip_addr, INET6_ADDRSTRLEN);
+	if (RC != 0)
+	{
+		free(ip_addr);
+		print(PRNT_WARN, "Unable to obtain source of ACK signal\n");
+		return 4;
+	}	
+	uint16_t port = port_from_sockaddr((struct sockaddr *)&message -> from);
+
+	if (strcmp(message -> par_wrapper -> machines[rank] -> ip_addr, ip_addr) != 0 ||
+			message -> par_wrapper -> master -> port != port)
+	{
+		print(PRNT_WARN, "Registered rank %d does not match IP address of source\n");
+	  	free(ip_addr);
+	   	return 5;	
+	}
+	free(ip_addr);
+	/* Update the last seen from time */
+	pthread_mutex_lock(&par_wrapper -> mutex);
+	gettimeofday(&par_wrapper -> machines[rank] -> last_alive, NULL);
+	pthread_mutex_unlock(&par_wrapper -> mutex);
 	return 0;
 }
 
 static int handle_query(struct udp_message *message)
 {
-	print(PRNT_INFO, "QUERY Handler\n");
-	return 0;
+	/* Response with an ACK */
+	if (message -> args -> dim != 1)
+	{
+		print(PRNT_WARN, "Invalid QUERY packet. Expected <QUERY>\n");
+		return 1;	
+	}
+
+	return ack(message -> par_wrapper -> command_socket, 
+			message -> par_wrapper -> this_machine -> rank, 
+			(struct sockaddr *)&message -> from); 
 }
 
 static int handle_term(struct udp_message *message)
 {
-	print(PRNT_INFO, "TERM Handler\n");
-	return 0;
+	int RC, return_code;
+	uint16_t port;
+	if (message -> args -> dim != 2)
+	{
+		print(PRNT_WARN, "Invalid TERM packet. Expected <TERM>:<RC>\n");
+		return 1;
+	}
+	/* 1) If I am MASTER, I am not allowed to get a term signal */
+	if (message -> par_wrapper -> this_machine -> rank == MASTER)
+	{
+		print(PRNT_WARN, "MASTER does not accept TERM packets\n");
+		return 1;
+	}
+	RC = parse_integer(message -> args -> strings[1], &return_code);
+	if (RC != 0)
+	{
+		print(PRNT_WARN, "Failed to parse return code\n");
+		return 2;
+	}
+
+	/* 2) The TERM signal must come from the master's command port */
+	char *ip_addr = (char *)malloc(INET6_ADDRSTRLEN * sizeof(char));
+	if (ip_addr == (char *)NULL)
+	{
+		print(PRNT_WARN, "Unable to allocate space for an IP address string\n");
+		return 3;
+	}
+	RC = ip_str_from_sockaddr((struct sockaddr *)&message -> from,
+		   ip_addr, INET6_ADDRSTRLEN);
+	if (RC != 0)
+	{
+		free(ip_addr);
+		print(PRNT_WARN, "Unable to obtain source of TERM signal\n");
+		return 4;
+	}	
+	port = port_from_sockaddr((struct sockaddr *)&message -> from);
+	if (strcmp(message -> par_wrapper -> master -> ip_addr, ip_addr) == 0 &&
+			message -> par_wrapper -> master -> port == port)
+	{
+		RC = ack(message -> par_wrapper -> command_socket, 
+			message -> par_wrapper -> this_machine -> rank, 
+			(struct sockaddr *)&message -> from); 
+		if (RC != 0)
+		{
+			print(PRNT_WARN, "Unable to send ACK for TERM\n");
+		}
+
+		/* Term signal is valid */
+		print(PRNT_INFO, "Received valid term signal from master. Exitting.\n");
+		free(ip_addr);
+		/* TODO: Clean up */
+		exit(return_code);
+	}
+	print(PRNT_WARN, "Source of TERM signal was not MASTER\n");
+	free(ip_addr);
+	return 5;
 }
 
 static int handle_create_link(struct udp_message *message)
 {
-	print(PRNT_INFO, "CREATE_LINK Handler\n");
+	/* CREATE_LINK <SRC> <DEST> */
+	if (message -> args -> dim != 3)
+	{
+		print(PRNT_WARN, "Invalid CREATE_LINK packet. Expected <CREATE_LINK>:<SRC>:<DEST>\n");
+		return 1;
+	}
+	remove_quotes(message -> args -> strings[1]);
+	remove_quotes(message -> args -> strings[2]);
+	trim(message -> args -> strings[1]);
+	trim(message -> args -> strings[2]);
+
+	/* Make sure that the source exists */
+	struct stat st;
+	if (stat(message -> args -> strings[1], &st) != 0)
+	{
+		print(PRNT_WARN, "Unable to create softlink from %s -> %s. Source does not exist.\n",
+				message -> args -> strings[1], message -> args -> strings[2]);
+		return 2;
+	}
+
+	/* Attempt to create the softlink */
+	if (symlink(message -> args -> strings[1], message -> args -> strings[2]) != 0)
+	{
+		print(PRNT_WARN, "Unable to create symlink from %s -> %s\n", 
+				message -> args -> strings[1], message -> args -> strings[2]);
+		return 3;
+	}
+
+	/* TODO: Save this information for later */
 	return 0;
 }
 

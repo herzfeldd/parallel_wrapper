@@ -83,6 +83,13 @@ int main(int argc, char **argv)
 	if (par_wrapper -> this_machine -> rank == MASTER)
 	{
 		par_wrapper -> master = par_wrapper -> this_machine;
+		par_wrapper -> machines = (machine **) calloc(par_wrapper -> num_procs, sizeof(machine *));
+		if (par_wrapper -> machines == (machine **)NULL)
+		{
+			print(PRNT_ERR, "Unable to allocate space for machines array\n");
+			return 3;
+		}
+		par_wrapper -> machines[0] = par_wrapper -> master;
 	}
 	else
 	{
@@ -96,12 +103,12 @@ int main(int argc, char **argv)
 	}
 
 	/* Gather the necessary chirp information */
-	RC = chirp_info(par_wrapper);
+	/*RC = chirp_info(par_wrapper);
 	if (RC != 0)
 	{
 		print(PRNT_ERR, "Failure sending/recieving chirp information\n");
 		return 2;
-	}
+	}*/
 
 	/* Create the listener */
 	pthread_create(&par_wrapper -> listener, &attr, &udp_server, (void *)par_wrapper);

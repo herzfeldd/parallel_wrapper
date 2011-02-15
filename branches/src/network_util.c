@@ -121,7 +121,7 @@ uint16_t port_from_sockaddr(const struct sockaddr *addr)
 	if (addr == (struct sockaddr *)NULL)
 	{
 		print(PRNT_ERR, "NULL sockaddr passed\n");
-		return 1;
+		return 0; /* Not a valid port */
 	}
 	switch (addr -> sa_family)
 	{
