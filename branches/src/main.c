@@ -1,8 +1,10 @@
-
 #include "wrapper.h"
 #include "chirp_util.h"
 #include "scratch.h"
 #include <signal.h>
+#include <sys/prctl.h>
+#include <sys/wait.h>
+#include <pwd.h>
 
 int main(int argc, char **argv)
 {
@@ -46,10 +48,26 @@ int main(int argc, char **argv)
 	par_wrapper -> symlinks = sll_get_list();
 	/* Get the initial working directory */
 	par_wrapper -> this_machine -> iwd = getcwd(NULL, 0); /* Allocates space */
+	/* Determine our name */
+	uid_t uid = getuid();
+	struct passwd *user_stats = getpwuid(uid);
+	if (user_stats == (struct passwd *)NULL)
+	{
+		print(PRNT_WARN, "Unable to determine the name of the current user - assuming 'nobody'\n");
+		par_wrapper -> this_machine -> user = strdup("nobody");
+	}
+	else
+	{
+		par_wrapper -> this_machine -> user = strdup(user_stats -> pw_name);	
+
+	}
 
 	/* Parse environment variables and command line arguments */
 	parse_environment_vars(par_wrapper);
 	parse_args(argc, argv, par_wrapper);
+
+	/* Set the environment variables */
+	set_environment_vars(par_wrapper);
 
 	/* Check that required values are filled in */
 	if (par_wrapper -> this_machine -> rank < 0)
@@ -117,7 +135,6 @@ int main(int argc, char **argv)
 	/* Create the scratch directory */
 	create_scratch(par_wrapper);
 
-	exit(0);
 	/* Gather the necessary chirp information */
 	RC = chirp_info(par_wrapper);
 	if (RC != 0)
@@ -145,7 +162,19 @@ int main(int argc, char **argv)
 			}
 		}
 		debug(PRNT_INFO, "All machines (%d) registers\n", par_wrapper -> num_procs);
-
+		/* Create the machines file */
+		RC = create_machine_file(par_wrapper);
+		if (RC != 0)
+		{
+			print(PRNT_ERR, "Unable to create the machines files");
+			cleanup(par_wrapper, 5);
+		}
+		RC = create_ssh_config(par_wrapper);
+		if (RC != 0)
+		{
+			print(PRNT_ERR, "Unable to create the machines files");
+			cleanup(par_wrapper, 5);
+		}
 	}
 	else /* Register with the master */
 	{
@@ -153,7 +182,8 @@ int main(int argc, char **argv)
 		while ( 1 )
 		{
 			RC = register_cmd(par_wrapper -> command_socket, par_wrapper -> this_machine -> rank,
-				par_wrapper -> this_machine -> iwd, par_wrapper -> master -> ip_addr, 
+				par_wrapper -> this_machine -> cpus,
+				par_wrapper -> this_machine -> iwd, par_wrapper -> this_machine -> user, par_wrapper -> master -> ip_addr, 
 				par_wrapper -> master -> port);		
 			if (RC == 0 && ! timercmp(&old_time, &par_wrapper -> master -> last_alive, =))
 			{
@@ -227,6 +257,59 @@ int main(int argc, char **argv)
 		}
 	}
 
+	/* Start up the MPI executable */
+	if (par_wrapper -> this_machine -> rank == MASTER)
+	{
+		pid_t p = fork();
+		if (p == (pid_t) -1)
+		{
+			print(PRNT_ERR, "Fork failed\n");
+			cleanup(par_wrapper, 10);
+		}
+		else if (p == (pid_t) 0)
+		{
+			/* I am the child */
+			prctl(PR_SET_PDEATHSIG, SIGTERM);
+			/* Set environment variables */
+			char *machine_file = join_paths(par_wrapper -> scratch_dir, MACHINE_FILE);
+			char *ssh_config = join_paths(par_wrapper -> scratch_dir, SSH_CONFIG);
+			setenv("MACHINE_FILE", machine_file, 1); 
+			setenv("SSH_CONFIG", ssh_config, 1);
+		   	free(machine_file);
+			free(ssh_config);	
+			char temp_str[1024];
+			snprintf(temp_str, 1024, "%d\n", par_wrapper -> num_procs);
+			setenv("NUM_PROC", temp_str, 1);
+			snprintf(temp_str, 1024, "%d\n", par_wrapper -> this_machine -> rank);
+			setenv("RANK", temp_str, 1);
+			snprintf(temp_str, 1024, "%d\n", par_wrapper -> cluster_id);
+			setenv("CLUSTER_ID", temp_str, 1);
+			setenv("SCRATCH_DIR", par_wrapper -> scratch_dir, 1);
+			setenv("IWD", par_wrapper -> this_machine -> iwd, 1);
+			setenv("IP_ADDR", par_wrapper -> this_machine -> ip_addr, 1);
+			setenv("TRANSFER_FILES", shared_fs != 0 ? "TRUE" : "FALSE", 1); 
+			setenv("SHARED_FS", shared_fs != 0 ? par_wrapper -> this_machine -> iwd : par_wrapper -> shared_fs, 1);
+			/* TODO: SSH ENVS */
+
+			/* Search in path */
+			int process_RC = execvp(par_wrapper -> executable[0], &par_wrapper -> executable[0]);
+			if (process_RC != 0)
+			{
+				print(PRNT_ERR, "%s\n", get_exec_error_msg(errno, par_wrapper -> executable[0]));
+			}
+			exit(process_RC);	
+		}
+		else
+		{
+			/* I am the parent */
+			int child_status = 0;
+			waitpid(p, &child_status, WUNTRACED); /* Wait for the child to finish */
+			cleanup(par_wrapper, child_status);
+		}
+
+	}
+
+	/* Always wait for the listener */
 	pthread_join(par_wrapper -> listener, NULL);
 
 	return 0;

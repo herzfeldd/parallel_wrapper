@@ -37,6 +37,24 @@ void parse_environment_vars(parallel_wrapper *par_wrapper)
 }
 
 /**
+ * Set environment variable values (particularly the path)
+ */
+void set_environment_vars(parallel_wrapper *par_wrapper)
+{
+	/* Get the path variable */
+	char *temp = getenv("PATH");
+	char *path = (char *) calloc(2048, sizeof(char));
+	if (path == (char *)NULL)
+	{
+		print(PRNT_WARN, "Unable to allocate space for new path variable\n");
+		return;
+	}
+	snprintf(path, 2048, "%s:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin:.", temp == (char *)NULL ? "" : temp);
+	setenv("PATH", path, 1); /* Replace path */
+	free(path);
+}
+
+/**
  * Parse commandline arguments
  */
 int parse_args(int argc, char **argv, parallel_wrapper *par_wrapper)
@@ -143,11 +161,12 @@ int parse_args(int argc, char **argv, parallel_wrapper *par_wrapper)
 	 * argc - optind
 	 */
 	par_wrapper -> executable_length = argc - optind;
-	par_wrapper -> executable = (char **) calloc(par_wrapper -> executable_length, sizeof(char *));
+	/* Add one so that we have a null terminator */
+	par_wrapper -> executable = (char **) calloc(par_wrapper -> executable_length + 1, sizeof(char *));
 	int i;
 	for (i = 0; i < par_wrapper -> executable_length; i++)
 	{
-		par_wrapper -> executable[i] = argv[optind + i];
+		par_wrapper -> executable[i] = strdup(argv[optind + i]);
 	}
 	return 0;
 }

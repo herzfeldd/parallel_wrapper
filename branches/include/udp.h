@@ -21,6 +21,6 @@ extern sigjmp_buf jmpbuf;
 extern void *udp_server(void *ptr);
 extern int ack(int socketfd, int rank, const struct sockaddr *addr);
 extern int term(int socketfd, int return_code, char *ip_addr, uint16_t port);
-extern int register_cmd(int socketfd, int rank, char *iwd, char *ip_addr, uint16_t port);
+extern int register_cmd(int socketfd, int rank, int cpus, char *iwd, char *username, char *ip_addr, uint16_t port);
 extern int create_link(int socketfd, char *src, char *dest, char *ip_addr, uint16_t port);
 #endif /* UDP_H */

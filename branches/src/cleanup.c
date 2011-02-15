@@ -16,6 +16,10 @@ void handle_exit_signal(int signal)
 	{	
 		siglongjmp(jmpbuf, 1);
 	}
+	else
+	{
+		exit(signal);
+	}
 }
 
 /**
@@ -23,6 +27,24 @@ void handle_exit_signal(int signal)
  */
 void cleanup(parallel_wrapper *par_wrapper, int return_code)
 {
+	int i, j;
+	if (par_wrapper -> this_machine -> rank == MASTER && 
+			par_wrapper -> machines != (machine **)NULL)
+	{
+
+		/* Send the term signal (don't send to self) */
+		for (i = 1; i < par_wrapper -> num_procs; i++)
+		{
+			if (par_wrapper -> machines[i] == (machine *)NULL)
+			{
+				continue;
+			}
+			for (j = 0; j < 10; j++)
+			term(par_wrapper -> command_socket, return_code, 
+					par_wrapper -> machines[i] -> ip_addr, par_wrapper -> machines[i] -> port);
+		}
+	}
+
 	/* Lock the parallel_wrapper structure */
 	pthread_mutex_lock(&par_wrapper -> mutex);
 

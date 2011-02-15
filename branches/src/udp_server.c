@@ -452,11 +452,12 @@ static int handle_send_file(struct udp_message *message)
 
 static int handle_register(struct udp_message *message)
 {
-	/* <REGISTER>:<RANK>:<IWD> */
+	/* <REGISTER>:<RANK>:<IWD>:<CPUS>:<USERNAME>*/
 	int RC, rank;
-	if (message -> args -> dim != 3)
+	int cpus = 1;
+	if (message -> args -> dim != 5)
 	{
-		print(PRNT_WARN, "Invalid CREATE_LINK packet. Expected <REGISTER>:<RANK>:<IWD>\n");
+		print(PRNT_WARN, "Invalid CREATE_LINK packet. Expected <REGISTER>:<RANK>:<IWD>:<CPUS>:<USER>\n");
 		return 1;
 	}
 	/* Only the MASTER is allowed to register ranks */
@@ -482,6 +483,13 @@ static int handle_register(struct udp_message *message)
 	/* Trim and remove quotes on the IWD */
 	remove_quotes(message -> args -> strings[2]);
 	trim(message -> args -> strings[2]);
+	RC = parse_integer(message -> args -> strings[3], &cpus);
+	if (RC != 0)
+	{
+		print(PRNT_WARN, "Unable to parse number of cpus - assuming 1\n");
+	}
+	remove_quotes(message -> args -> strings[4]);
+	trim(message -> args -> strings[4]);
 
 	/* Get the IP Address and port of this host */
 	char *ip_addr = (char *)malloc(INET6_ADDRSTRLEN * sizeof(char));
@@ -515,8 +523,10 @@ static int handle_register(struct udp_message *message)
 		pthread_mutex_lock(&message -> par_wrapper -> mutex);
 		message -> par_wrapper -> machines[rank] -> ip_addr = strdup(ip_addr);
 		message -> par_wrapper -> machines[rank] -> rank = rank;
+		message -> par_wrapper -> machines[rank] -> cpus = cpus;
 		message -> par_wrapper -> machines[rank] -> iwd = strdup(message -> args -> strings[2]);
 		message -> par_wrapper -> machines[rank] -> port = port;	
+		message -> par_wrapper -> machines[rank] -> user = strdup(message -> args -> strings[4]);
 		pthread_mutex_unlock(&message -> par_wrapper -> mutex);
 	}
 	else

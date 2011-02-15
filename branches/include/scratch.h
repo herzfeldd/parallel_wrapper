@@ -6,7 +6,8 @@
 /**
  * Define the names of SSH files/executables
  */ 
-#define SSHD_EXECUTABLE "ssh"
+#define SSHD_EXECUTABLE "sshd"
+#define SSH_EXECUTABLE "ssh"
 #define SSH_KEYGEN_EXECUTABLE "ssh-keygen"
 #define SSHD_LOG "sshd.log"
 #define SSH_CONFIG "ssh_config"
@@ -22,4 +23,10 @@
 extern int cleanup_scratch(const char *scratch);
 
 extern int create_scratch(parallel_wrapper *par_wrapper);
+
+extern int create_machine_file(parallel_wrapper *par_wrapper);
+
+extern int create_ssh_wrapper(char *scratch_dir);
+
+extern int create_ssh_config(parallel_wrapper *par_wrapper);
 #endif /* SCRATCH_H */

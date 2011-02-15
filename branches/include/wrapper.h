@@ -29,6 +29,7 @@ typedef struct machine
 	int unique; /**< Flag noting if this a unique host */
 	char *iwd; /**< Initial working directory */
 	char *ip_addr; /**< The IP address associated with the machine */
+	char *user; /**< The username associated with this machine */
 	struct timeval last_alive;
 } machine;
 
@@ -75,4 +76,8 @@ extern int chirp_info(parallel_wrapper *par_wrapper);
 extern void handle_exit_signal(int signal);
 
 extern void cleanup(parallel_wrapper *par_wrapper, int return_code);
+
+extern void set_environment_vars(parallel_wrapper *par_wrapper);
+
+extern char * get_exec_error_msg(int RC, char *filename);
 #endif /* WRAPPER_H */

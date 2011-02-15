@@ -1,6 +1,7 @@
 #include "wrapper.h"
 #include "network_util.h"
 #include "string_util.h"
+#include <unistd.h>
 
 /**
  * Send an ACK back to the host specified in the sockaddr structure
@@ -73,7 +74,7 @@ int term(int socketfd, int return_code, char *ip_addr, uint16_t port)
  * @param ip_addr The ipaddress of the receiving server
  * @param port The port of the receiving server
  */
-int register_cmd(int socketfd, int rank, char *iwd, char *ip_addr, uint16_t port)
+int register_cmd(int socketfd, int rank, int cpus, char *iwd, char *username, char *ip_addr, uint16_t port)
 {
 	if (ip_addr == (char *)NULL)
 	{
@@ -95,8 +96,17 @@ int register_cmd(int socketfd, int rank, char *iwd, char *ip_addr, uint16_t port
 		print(PRNT_WARN, "Iwd is null\n");
 		return 4;
 	}
+	if (cpus <= 0)
+	{
+		print(PRNT_WARN, "Invalid number of cpus - assuming 1\n");
+		cpus = 1;
+	}
+	if (username == (char *)NULL)
+	{
+		print(PRNT_WARN, "Username is NULL. Assuming 'nobody'\n");
+	}
 	char message[1024];
-	snprintf(message, 1024, "%d:%d:%s", CMD_REGISTER, rank, iwd);
+	snprintf(message, 1024, "%d:%d:%s:%d:%s", CMD_REGISTER, rank, iwd, cpus, username == (char *)NULL ? "nobody" : username);
 	int RC = send_string_to_ip_port(ip_addr, port, message, socketfd);
 	return RC;
 }
@@ -139,3 +149,4 @@ int create_link(int socketfd, char *src, char *dest, char *ip_addr, uint16_t por
 	int RC = send_string_to_ip_port(ip_addr, port, message, socketfd);
 	return RC;
 }
+
