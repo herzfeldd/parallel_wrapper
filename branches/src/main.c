@@ -43,6 +43,8 @@ int main(int argc, char **argv)
 	pthread_mutex_init(&par_wrapper -> mutex, NULL);
 	/* Allocate a list of symlinks */
 	par_wrapper -> symlinks = sll_get_list();
+	/* Get the initial working directory */
+	par_wrapper -> this_machine -> iwd = getcwd(NULL, 0); /* Allocates space */
 
 	/* Parse environment variables and command line arguments */
 	parse_environment_vars(par_wrapper);
@@ -112,15 +114,113 @@ int main(int argc, char **argv)
 	}
 
 	/* Gather the necessary chirp information */
-	/*RC = chirp_info(par_wrapper);
+	RC = chirp_info(par_wrapper);
 	if (RC != 0)
 	{
 		print(PRNT_ERR, "Failure sending/recieving chirp information\n");
 		return 2;
-	}*/
+	}
 
 	/* Create the listener */
 	pthread_create(&par_wrapper -> listener, &attr, &udp_server, (void *)par_wrapper);
+
+	/* If I am the MASTER, wait for all ranks to register */
+	if (par_wrapper -> this_machine -> rank == MASTER)
+	{
+		int i;
+		for (i = 0; i < par_wrapper -> num_procs; i++)
+		{
+			while ( 1 )
+			{
+				if (par_wrapper -> machines[i] != NULL)
+				{
+					break;
+				}
+				sleep(1);
+			}
+		}
+		debug(PRNT_INFO, "All machines (%d) registers\n", par_wrapper -> num_procs);
+
+	}
+	else /* Register with the master */
+	{
+		struct timeval old_time = par_wrapper -> master -> last_alive;
+		while ( 1 )
+		{
+			RC = register_cmd(par_wrapper -> command_socket, par_wrapper -> this_machine -> rank,
+				par_wrapper -> this_machine -> iwd, par_wrapper -> master -> ip_addr, 
+				par_wrapper -> master -> port);		
+			if (RC == 0 && ! timercmp(&old_time, &par_wrapper -> master -> last_alive, =))
+			{
+				break;
+			}		
+			sleep(1);
+		}
+	}
+
+	/* MASTER - Identify unique hosts */
+	if (par_wrapper -> this_machine -> rank == MASTER)
+	{
+		int i, j;
+		for (i = 0; i < par_wrapper -> num_procs; i++)
+		{
+			/* All machines are initially unique */
+			par_wrapper -> machines[i] -> unique = 1; 
+		}
+		for (i = 0; i < par_wrapper -> num_procs; i++)
+		{
+			for (j = i + 1; j < par_wrapper -> num_procs; j++)
+			{
+				if (strcmp(par_wrapper -> machines[i] -> ip_addr, par_wrapper -> machines[j] -> ip_addr) == 0)
+				{
+					par_wrapper -> machines[j] -> unique = 0;
+					debug(PRNT_INFO, "Rank %d (%s:%d) is not unique (some host as %d).\n", 
+							j, par_wrapper -> machines[j] -> ip_addr, 
+							par_wrapper -> machines[j] -> port, i);
+				}	
+			}
+		}
+	}
+	
+	int shared_fs = 1; /* Flag which denotes a shared fs */
+
+	/* If I am rank 0 - determine if we need to create a fake file system */
+	if (par_wrapper -> this_machine -> rank == MASTER)
+	{
+		int i;
+		for (i = 0; i < par_wrapper -> num_procs; i++)
+		{
+			if (strcmp(par_wrapper -> machines[i] -> iwd, par_wrapper -> master -> iwd) != 0)
+			{
+				shared_fs = 0;
+			}
+		}
+		if (shared_fs == 0)
+		{
+			char fake_fs[1024];
+			time_t curr_time = time(NULL);
+			snprintf(fake_fs, 1024, "/tmp/condor_hydra_%d_%ld", par_wrapper -> cluster_id, 
+					(long)curr_time);
+			debug(PRNT_INFO, "Using fake file system (%s). IWD's across ranks differ\n", fake_fs);
+			for (i = 0; i < par_wrapper -> num_procs; i++)
+			{
+				if (! par_wrapper -> machines[i] -> unique)
+				{
+					continue;
+				}
+				/* Send the command to create softlinks */
+				create_link(par_wrapper -> command_socket, par_wrapper -> machines[i] -> iwd,
+						fake_fs, par_wrapper -> machines[i] -> ip_addr, 
+						par_wrapper -> machines[i] -> port);
+			}
+			par_wrapper -> shared_fs = strdup(fake_fs);
+		}
+		else 
+		{
+			par_wrapper -> shared_fs = strdup(par_wrapper -> master -> iwd);
+			debug(PRNT_INFO, "Using a shared file system, IWD = %s\n", par_wrapper -> master -> iwd);
+		}
+	}
 
 	pthread_join(par_wrapper -> listener, NULL);
 

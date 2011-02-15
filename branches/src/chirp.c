@@ -24,15 +24,13 @@ int chirp_info(parallel_wrapper *par_wrapper)
 		print(PRNT_WARN, "Failed to get RequestCpus, assuming 1\n");
 		par_wrapper -> this_machine -> cpus = 1;
 	}
-
-	/* Get the initial working directory */
-	RC = get_chirp_string(chirp, "Iwd", &par_wrapper -> this_machine -> iwd);
+	
+	RC = get_chirp_integer(chirp, "ClusterId", &par_wrapper -> cluster_id);
 	if (RC != 0)
 	{
-		par_wrapper -> this_machine -> iwd = getcwd(NULL, 0); /* Allocates space */
-		print(PRNT_WARN, "Failed to get Iwd, assuming current directory: %s\n",
-				par_wrapper -> this_machine -> iwd);
-	}	
+		print(PRNT_WARN, "Failed to get ClusterId, assuming random integer\n");
+		par_wrapper -> cluster_id = rand();
+	}
 
 	/* Send the MASTER information back to the schedd */
 	if (par_wrapper -> this_machine -> rank == MASTER)

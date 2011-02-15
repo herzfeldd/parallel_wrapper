@@ -221,11 +221,7 @@ static int handle_ack(struct udp_message *message)
 {
 	int RC, rank;
 	/* CMD <RANK> */
-	parallel_wrapper *par_wrapper = message -> par_wrapper;
-	if (par_wrapper -> this_machine -> rank != MASTER)
-	{
-		return 0;
-	}
+	parallel_wrapper *par_wrapper = message -> par_wrapper;	
 	/* Make sure the format is correct */
 	if (message -> args -> dim != 2)
 	{
@@ -243,11 +239,18 @@ static int handle_ack(struct udp_message *message)
 		print(PRNT_WARN, "Invalid rank (%d)\n", rank);
 		return 3;
 	}
-	if (par_wrapper -> machines[rank] == (machine *)NULL)
+	if (par_wrapper -> this_machine -> rank != MASTER && rank != 0)
 	{
-		print(PRNT_WARN, "Cannot receive an ACK from rank %d. It has not registered yet\n", rank);
+		print(PRNT_WARN, "Unable to receive ACK from non-MASTER rank\n");
+		return 3;
+	}
+	if (par_wrapper -> this_machine -> rank != MASTER && 
+			(par_wrapper -> master == NULL || par_wrapper -> master -> ip_addr == NULL))
+	{
+		print(PRNT_WARN, "MASTER not intialized yet\n");
 		return 4;
 	}	
+
 	/* Make sure that the source matches the registered machine */
 	char *ip_addr = (char *)malloc(INET6_ADDRSTRLEN * sizeof(char));
 	if (ip_addr == (char *)NULL)
@@ -264,7 +267,31 @@ static int handle_ack(struct udp_message *message)
 		return 4;
 	}	
 	uint16_t port = port_from_sockaddr((struct sockaddr *)&message -> from);
-
+	if (par_wrapper -> this_machine -> rank != MASTER)
+	{
+		/* Check for correct source */
+		if (strcmp(message -> par_wrapper -> master -> ip_addr, ip_addr) != 0 ||
+			message -> par_wrapper -> master -> port != port)
+		{
+			print(PRNT_WARN, "ACK from MASTER (%s:%d) does not match IP address of source (%s:%d)\n", 
+				rank, par_wrapper -> master -> ip_addr, 
+				par_wrapper -> master -> port, ip_addr, port);
+			free(ip_addr);
+			return 4;
+		}
+		free(ip_addr);
+		pthread_mutex_lock(&par_wrapper -> mutex);
+		gettimeofday(&par_wrapper -> master -> last_alive, NULL);
+		pthread_mutex_unlock(&par_wrapper -> mutex);
+		return 0;
+	}
+	else if (par_wrapper -> machines[rank] == (machine *)NULL)
+	{
+		print(PRNT_WARN, "Cannot receive an ACK from rank %d. It has not registered yet\n", rank);
+		free(ip_addr);
+		return 4;
+	}
+	
 	if (strcmp(message -> par_wrapper -> machines[rank] -> ip_addr, ip_addr) != 0 ||
 			message -> par_wrapper -> machines[rank] -> port != port)
 	{
@@ -311,6 +338,13 @@ static int handle_term(struct udp_message *message)
 		print(PRNT_WARN, "MASTER does not accept TERM packets\n");
 		return 1;
 	}
+	/* make sure that the master is initialized */
+	if (message -> par_wrapper -> master == NULL || message -> par_wrapper -> master -> ip_addr == NULL)
+	{
+		print(PRNT_WARN, "MASTER process not yet initialized\n");
+		return 1;
+	}
+	
 	RC = parse_integer(message -> args -> strings[1], &return_code);
 	if (RC != 0)
 	{

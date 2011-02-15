@@ -34,6 +34,7 @@ typedef struct machine
 
 typedef struct parallel_wrapper
 {
+	int cluster_id; /**< The condor cluster id */
 	int executable_length; /**< The length of the executable array */
 	int num_procs; /**< The number of processors */
 	int command_socket; /**< The FD for the command socket */
@@ -45,6 +46,7 @@ typedef struct parallel_wrapper
 	pthread_mutex_t mutex; /**< Semaphore */
 	char *mpi_flags; /**< Flags to the MPI executable */
 	char *mpi_executable; /**< MPI Executable */
+	char *shared_fs; /**< The shared file system */
 	char **executable; /**< Array holding the passed executable and args */
 	machine **machines; /**< All machines (for the master only) */
 	sl_list *symlinks; /**< List of symlinks */
