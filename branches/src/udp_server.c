@@ -266,9 +266,11 @@ static int handle_ack(struct udp_message *message)
 	uint16_t port = port_from_sockaddr((struct sockaddr *)&message -> from);
 
 	if (strcmp(message -> par_wrapper -> machines[rank] -> ip_addr, ip_addr) != 0 ||
-			message -> par_wrapper -> master -> port != port)
+			message -> par_wrapper -> machines[rank] -> port != port)
 	{
-		print(PRNT_WARN, "Registered rank %d does not match IP address of source\n");
+		print(PRNT_WARN, "Registered rank %d (%s:%d) does not match IP address of source (%s:%d)\n", 
+				rank, ip_addr, port, 
+				par_wrapper -> machines[rank] -> ip_addr, par_wrapper -> machines[rank] -> port);
 	  	free(ip_addr);
 	   	return 5;	
 	}
@@ -356,6 +358,7 @@ static int handle_term(struct udp_message *message)
 static int handle_create_link(struct udp_message *message)
 {
 	/* CREATE_LINK <SRC> <DEST> */
+	int RC;
 	if (message -> args -> dim != 3)
 	{
 		print(PRNT_WARN, "Invalid CREATE_LINK packet. Expected <CREATE_LINK>:<SRC>:<DEST>\n");
@@ -395,17 +398,117 @@ static int handle_create_link(struct udp_message *message)
 	pthread_mutex_lock(&message -> par_wrapper -> mutex);
 	sll_add_element(message -> par_wrapper -> symlinks, (void *)dest);
 	pthread_mutex_unlock(&message -> par_wrapper -> mutex);
+	
+	/* Send ACK back */
+	RC = ack(message -> par_wrapper -> command_socket, 
+		message -> par_wrapper -> this_machine -> rank, 
+		(struct sockaddr *)&message -> from); 
+	if (RC != 0)
+	{
+		print(PRNT_WARN, "Unable to send ACK for CREATE_LINK\n");
+	}
 	return 0;
 }
 
 static int handle_send_file(struct udp_message *message)
 {
-	print(PRNT_INFO, "SEND_FILE Handler\n");
+	print(PRNT_INFO, "NOT IMPLEMENTED -- SEND_FILE Handler\n");
 	return 0;
 }
 
 static int handle_register(struct udp_message *message)
 {
-	print(PRNT_INFO, "REGISTER Handler\n");
+	/* <REGISTER>:<RANK>:<IWD> */
+	int RC, rank;
+	if (message -> args -> dim != 3)
+	{
+		print(PRNT_WARN, "Invalid CREATE_LINK packet. Expected <REGISTER>:<RANK>:<IWD>\n");
+		return 1;
+	}
+	/* Only the MASTER is allowed to register ranks */
+	if (message -> par_wrapper -> this_machine -> rank != MASTER)
+	{
+		print(PRNT_WARN, "Only the MASTER is allowed to register individuals\n");
+		return 2;
+	}
+
+	/* Attempt to parse the rank */
+	RC = parse_integer(message -> args -> strings[1], &rank);
+	if (RC != 0)
+	{
+		print(PRNT_WARN, "Failed to parse rank\n");
+		return 3;
+	}
+	if (rank < 0 || rank >= message -> par_wrapper -> num_procs)
+	{
+		print(PRNT_WARN, "Invalid rank (%d)\n", rank);
+		return 4;
+	}
+
+	/* Trim and remove quotes on the IWD */
+	remove_quotes(message -> args -> strings[2]);
+	trim(message -> args -> strings[2]);
+
+	/* Get the IP Address and port of this host */
+	char *ip_addr = (char *)malloc(INET6_ADDRSTRLEN * sizeof(char));
+	if (ip_addr == (char *)NULL)
+	{
+		print(PRNT_WARN, "Unable to allocate space for an IP address string\n");
+		return 3;
+	}
+	RC = ip_str_from_sockaddr((struct sockaddr *)&message -> from,
+		   ip_addr, INET6_ADDRSTRLEN);
+	if (RC != 0)
+	{
+		free(ip_addr);
+		print(PRNT_WARN, "Unable to obtain source of TERM signal\n");
+		return 4;
+	}	
+	uint16_t port = port_from_sockaddr((struct sockaddr *)&message -> from);
+	
+	/**
+	 * Check if this machine has already been registered
+	 */
+	if (message -> par_wrapper -> machines[rank] == NULL)
+	{
+		message -> par_wrapper -> machines[rank] = (machine *) calloc(1, sizeof(struct machine));
+		if (message -> par_wrapper -> machines[rank] == (machine *)NULL)
+		{
+			print(PRNT_WARN, "Unable to allocate space for new machine\n");
+			free(ip_addr);
+			return 5;
+		}
+		message -> par_wrapper -> machines[rank] -> ip_addr = strdup(ip_addr);
+		message -> par_wrapper -> machines[rank] -> rank = rank;
+		message -> par_wrapper -> machines[rank] -> iwd = strdup(message -> args -> strings[2]);
+		message -> par_wrapper -> machines[rank] -> port = port;	
+	}
+	else
+	{
+		/** 
+		 * This machine has already been allocated -
+		 * check if this is the same machine
+		 */
+		if (strcmp(message -> par_wrapper -> machines[rank] -> ip_addr, ip_addr) != 0 ||
+			message -> par_wrapper -> machines[rank] -> port != port)
+		{
+			print(PRNT_WARN, "Command REGISTER from rank %d (%s:%d) does not originate from already registered address (%s:%d)\n",
+				rank, ip_addr, port, message -> par_wrapper -> machines[rank] -> ip_addr, 
+				message -> par_wrapper -> machines[rank] -> port);
+			free(ip_addr);
+			return 6;
+		}
+		print(PRNT_INFO, "Received command REGISTER from rank %d, but already registered. Sending ACK\n", rank);
+	}
+
+	/* Send ACK back */
+	RC = ack(message -> par_wrapper -> command_socket, 
+		message -> par_wrapper -> this_machine -> rank, 
+		(struct sockaddr *)&message -> from); 
+	if (RC != 0)
+	{
+		print(PRNT_WARN, "Unable to send ACK for REGISTER\n");
+	}
+	free(ip_addr);
 	return 0;
 }
