@@ -13,10 +13,13 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include "udp.h"
+#include "sll.h"
 #include "network_util.h"
 #include "log.h"
 
 #define MASTER (0u)
+
+extern int exit_flag;
 
 typedef struct machine
 {
@@ -44,6 +47,7 @@ typedef struct parallel_wrapper
 	char *mpi_executable; /**< MPI Executable */
 	char **executable; /**< Array holding the passed executable and args */
 	machine **machines; /**< All machines (for the master only) */
+	sl_list *symlinks; /**< List of symlinks */
 } parallel_wrapper;
 
 /**
@@ -65,4 +69,7 @@ extern void default_pthead_attr(pthread_attr_t *attr);
 
 extern int chirp_info(parallel_wrapper *par_wrapper);
 
+extern void handle_exit_signal(int signal);
+
+extern void cleanup(parallel_wrapper *par_wrapper, int return_code);
 #endif /* WRAPPER_H */

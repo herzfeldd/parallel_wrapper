@@ -5,6 +5,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+#include <setjmp.h>
 /**
  * Define a structure which represents a single UDP message
  */
@@ -59,8 +60,9 @@ static struct udp_handler handlers[] =
 	{CMD_NULL, NULL}
 } ;
 
+int jmpset = 0;
+sigjmp_buf jmpbuf;
 
-	
 /**
  * Starts a UDP server
  *
@@ -102,6 +104,12 @@ void *udp_server(void *ptr)
 		FD_ZERO(&readfds);
 		FD_SET(par_wrapper -> command_socket, &readfds);
 		memset(buffer, 0, sizeof(char) * BUFFER_SIZE);
+		sigsetjmp(jmpbuf, 1); /* NOTE: This line must be right before we check exit_flag */
+		jmpset = 1;
+		if (exit_flag)
+		{
+			cleanup(par_wrapper, 250);
+		}
 		RC = select(n, &readfds, NULL, NULL, NULL);
 		if (RC == -1)
 		{
@@ -338,8 +346,7 @@ static int handle_term(struct udp_message *message)
 		/* Term signal is valid */
 		print(PRNT_INFO, "Received valid term signal from master. Exitting.\n");
 		free(ip_addr);
-		/* TODO: Clean up */
-		exit(return_code);
+		cleanup(message -> par_wrapper, return_code);
 	}
 	print(PRNT_WARN, "Source of TERM signal was not MASTER\n");
 	free(ip_addr);
@@ -354,6 +361,13 @@ static int handle_create_link(struct udp_message *message)
 		print(PRNT_WARN, "Invalid CREATE_LINK packet. Expected <CREATE_LINK>:<SRC>:<DEST>\n");
 		return 1;
 	}
+	/* Make sure that the symlinks list is initialized */
+	if (!is_valid_sll(message -> par_wrapper -> symlinks))
+	{
+		print(PRNT_WARN, "SLL symlinks list is not initialized\n");
+		return 2;
+	}
+
 	remove_quotes(message -> args -> strings[1]);
 	remove_quotes(message -> args -> strings[2]);
 	trim(message -> args -> strings[1]);
@@ -365,7 +379,7 @@ static int handle_create_link(struct udp_message *message)
 	{
 		print(PRNT_WARN, "Unable to create softlink from %s -> %s. Source does not exist.\n",
 				message -> args -> strings[1], message -> args -> strings[2]);
-		return 2;
+		return 3;
 	}
 
 	/* Attempt to create the softlink */
@@ -373,10 +387,14 @@ static int handle_create_link(struct udp_message *message)
 	{
 		print(PRNT_WARN, "Unable to create symlink from %s -> %s\n", 
 				message -> args -> strings[1], message -> args -> strings[2]);
-		return 3;
+		return 4;
 	}
 
-	/* TODO: Save this information for later */
+	/* Save this information for later */
+	char *dest = strdup(message -> args -> strings[2]);
+	pthread_mutex_lock(&message -> par_wrapper -> mutex);
+	sll_add_element(message -> par_wrapper -> symlinks, (void *)dest);
+	pthread_mutex_unlock(&message -> par_wrapper -> mutex);
 	return 0;
 }
 

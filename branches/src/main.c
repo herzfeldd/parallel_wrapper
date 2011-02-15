@@ -1,12 +1,19 @@
 
 #include "wrapper.h"
 #include "chirp_util.h"
+#include <signal.h>
 
 int main(int argc, char **argv)
 {
 	int RC;
 	pthread_attr_t attr;
 	default_pthead_attr(&attr);
+
+	/* Install command signal handlers */
+	signal(SIGINT, handle_exit_signal);
+	signal(SIGTERM, handle_exit_signal);
+	signal(SIGHUP, handle_exit_signal);
+
 
 	/* Allocate a new parallel_wrapper structure */
 	parallel_wrapper *par_wrapper = (parallel_wrapper *)calloc(1, sizeof(struct parallel_wrapper));
@@ -34,6 +41,8 @@ int main(int argc, char **argv)
 	par_wrapper -> mpi_executable = strdup("mpiexec.hydra");
 	/* Default mutex state */
 	pthread_mutex_init(&par_wrapper -> mutex, NULL);
+	/* Allocate a list of symlinks */
+	par_wrapper -> symlinks = sll_get_list();
 
 	/* Parse environment variables and command line arguments */
 	parse_environment_vars(par_wrapper);

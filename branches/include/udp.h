@@ -2,6 +2,7 @@
 #define UDP_H
 
 #include "network_util.h"
+#include <setjmp.h>
 
 typedef enum CMD
 {
@@ -13,6 +14,9 @@ typedef enum CMD
 	CMD_REGISTER, /**< Register to rank 0 */
 	CMD_CREATE_LINK /**< Create a soft link */
 } CMD;
+
+extern int jmpset;
+extern sigjmp_buf jmpbuf;
 
 extern void *udp_server(void *ptr);
 extern int ack(int socketfd, int rank, const struct sockaddr *addr);

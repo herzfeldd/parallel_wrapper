@@ -3,7 +3,7 @@ LIB		= -L../lib
 INCLUDE		= -I../include
 SOURCE 		= chirp_util.c log.c main.c network_util.c string_util.c \
 		  threads.c timer.c parse_args_env.c udp_server.c \
-		  udp_client.c chirp.c
+		  udp_client.c chirp.c sll.c cleanup.c
 DETAIL		= -DDETAIL
 # Add -O2 here
 CFLAGS		= -g -Wall -Werror ${INCLUDE} ${DETAIL}
