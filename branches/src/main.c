@@ -155,7 +155,7 @@ int main(int argc, char **argv)
 	/* If I am the MASTER, wait for all ranks to register */
 	if (par_wrapper -> this_machine -> rank == MASTER)
 	{
-		int i;
+		int i, j;
 		for (i = 0; i < par_wrapper -> num_procs; i++)
 		{
 			while ( 1 )
@@ -165,9 +165,19 @@ int main(int argc, char **argv)
 					break;
 				}
 				sleep(1);
+				j++;
+				if (j == par_wrapper -> timeout)
+				{
+					print(PRNT_WARN, "Rank %d not registered - giving up on it\n", i);
+					break;
+				}
+				if ((j % par_wrapper -> ka_interval) == 0)
+				{
+					debug(PRNT_INFO, "Waiting for registration from rank %d\n", i);
+				}
 			}
 		}
-		debug(PRNT_INFO, "All machines (%d) registers\n", par_wrapper -> num_procs);
+		debug(PRNT_INFO, "Finished machine registration.\n", par_wrapper -> num_procs);
 		/* Create the machines file */
 		RC = create_machine_file(par_wrapper);
 		if (RC != 0)
@@ -205,17 +215,29 @@ int main(int argc, char **argv)
 		int i, j;
 		for (i = 0; i < par_wrapper -> num_procs; i++)
 		{
+			if (par_wrapper -> machines[i] == (machine *)NULL)
+			{
+				continue;
+			}
 			/* All machines are initially unique */
 			par_wrapper -> machines[i] -> unique = 1; 
 		}
 		for (i = 0; i < par_wrapper -> num_procs; i++)
 		{
+			if (par_wrapper -> machines[i] == (machine *)NULL)
+			{
+				continue;
+			}
 			if (par_wrapper -> machines[i] -> unique == 0)
 			{
 				continue; /* This host is already not unique */
 			}
 			for (j = i + 1; j < par_wrapper -> num_procs; j++)
 			{
+				if (par_wrapper -> machines[j] == (machine *)NULL)
+				{
+					continue;
+				}
 				if (par_wrapper -> machines[j] -> unique == 0)
 				{
 					continue; /* This host is already not unique */
@@ -239,6 +261,10 @@ int main(int argc, char **argv)
 		int i;
 		for (i = 0; i < par_wrapper -> num_procs; i++)
 		{
+			if (par_wrapper -> machines[i] == (machine *)NULL)
+			{
+				continue;
+			}
 			if (strcmp(par_wrapper -> machines[i] -> iwd, par_wrapper -> master -> iwd) != 0)
 			{
 				shared_fs = 0;
@@ -253,6 +279,10 @@ int main(int argc, char **argv)
 			debug(PRNT_INFO, "Using fake file system (%s). IWD's across ranks differ\n", fake_fs);
 			for (i = 0; i < par_wrapper -> num_procs; i++)
 			{
+				if (par_wrapper -> machines[i] == (machine *)NULL)
+				{
+					continue;
+				}
 				if (! par_wrapper -> machines[i] -> unique)
 				{
 					continue;
