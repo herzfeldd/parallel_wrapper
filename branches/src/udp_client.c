@@ -36,6 +36,32 @@ int ack(int socketfd, int rank, const struct sockaddr *addr)
 }
 
 /**
+ * Send a QUERY to the host listening on ip_addr and port
+ *
+ * @param socketfd The socket to send the message on
+ * @param ip_addr The ipaddress to send to 
+ * @param port The port to send to 
+ * @return 0 on success, otherwise failure
+ */
+int query(int socketfd, char *ip_addr, uint16_t port)
+{
+	int RC = 0;
+	if (ip_addr == (char *)NULL)
+	{
+		print(PRNT_WARN, "IP Address is null\n");
+		return 1;
+	}
+	if (socketfd < 0)
+	{
+		print(PRNT_WARN, "Invalid socket descriptor\n");
+		return 3;
+	}
+	char message[1024];
+	snprintf(message, 1024, "%d", CMD_QUERY);
+	RC = send_string_to_ip_port(ip_addr, port, message, socketfd);
+	return RC;
+}
+/**
  * Send the term signal to a host with the given ip_addr and port.
  *
  * Sends the TERM command to a host with the given ip and port. A

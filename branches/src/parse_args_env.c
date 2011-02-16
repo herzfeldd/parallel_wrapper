@@ -14,25 +14,6 @@ void parse_environment_vars(parallel_wrapper *par_wrapper)
 	value = getenv("_CONDOR_NPROCS");
 	parse_integer(value, &par_wrapper -> num_procs);
 
-	value = getenv("MPI_EXEC");
-	if (value != (char *) NULL)
-	{
-		if (par_wrapper -> mpi_executable != (char *)NULL)
-		{
-			free(par_wrapper -> mpi_executable);
-		}
-		par_wrapper -> mpi_executable = strdup(value); 
-	}
-
-	value = getenv("MPI_FLAGS");
-	if (value != (char *)NULL)
-	{
-		if (par_wrapper -> mpi_flags != (char *)NULL)
-		{
-			free(par_wrapper -> mpi_flags);
-		}
-		par_wrapper -> mpi_flags = strdup(value); 
-	}
 	return;
 }
 
@@ -67,15 +48,14 @@ int parse_args(int argc, char **argv, parallel_wrapper *par_wrapper)
 			{"verbose", no_argument, &verbose, 1},
 			{"help", no_argument, 0, 'h'},
 			{"rank", required_argument, 0, 'r'},
-			{"flags", required_argument, 0, 'f'},
-			{"mpi", required_argument, 0, 'm'},
 			{"ports", required_argument, 0, 'p'},
-			{"scratch", required_argument, 0, 's'},
+			{"timeout", required_argument, 0, 't'},
+			{"ka-interval", required_argument, 0, 'k'},
 			{0, 0, 0, 0}
 		};
 		int option_index = 0;
 		/* The '+' make sure all arguments are processed in order */
-		c =getopt_long(argc, argv, "+hr:f:m:p:s:n:",
+		c =getopt_long(argc, argv, "+hr:p:n:t:k:",
 			   long_options, &option_index);
 		/* Detect the end of the options */
 		if (c == -1)
@@ -112,37 +92,45 @@ int parse_args(int argc, char **argv, parallel_wrapper *par_wrapper)
 				RC = parse_integer(optarg, &par_wrapper -> this_machine -> rank);
 				if (RC != 0)
 				{
-					print(PRNT_ERR, "Unable to parse the number of processors\n");
+					print(PRNT_ERR, "Unable to parse the rank.\n");
 					help();
 					exit(1);
 				}
-				break;
-			case 'f': /* Flags */
-				if (par_wrapper -> mpi_flags != (char *)NULL)
-				{
-					free(par_wrapper -> mpi_flags);
-				}
-				par_wrapper -> mpi_flags = strdup(optarg);
-				break;
-			case 'm': /* MPI Executable */
-				if (par_wrapper -> mpi_executable != (char *)NULL)
-				{
-					free(par_wrapper -> mpi_executable);
-				}
-				par_wrapper -> mpi_executable = strdup(optarg); 
 				break;
 			case 'p': /* Port Range {low:high} */
 				/* Attempt to parse */
 				print(PRNT_WARN, "Port range not implemented\n");
 				break;
-			case 's': /* Scratch Directory */
-				print(PRNT_WARN, "Scratch directory not implemented\n");
-				/*if (par_wrapper -> scratch_dir != (char *)NULL)
+			case 't': /* Timeout */
+				/* Attempt to parse */
+				RC = parse_integer(optarg, &par_wrapper -> timeout);
+				if (RC != 0)
 				{
-					free(par_wrapper -> scratch_dir);
-				}	
-				par_wrapper -> scratch_dir = strdup(optarg); */
+					print(PRNT_ERR, "Unable to parse timeout\n");
+					help();
+					exit(1);
+				}
+				if (par_wrapper -> timeout < 10)
+				{
+					print(PRNT_WARN, "Assuming minimum timeout of 10 seconds.\n");
+					par_wrapper -> timeout = 10;
+				}
 				break;
+			case 'k': /* Keep-alive interval */
+				/* Attempt to parse */
+				RC = parse_integer(optarg, &par_wrapper -> ka_interval);
+				if (RC != 0)
+				{
+					print(PRNT_ERR, "Unable to parse keep-alive interval\n");
+					help();
+					exit(1);
+				}
+				if (par_wrapper -> ka_interval < 1)
+				{
+					print(PRNT_WARN, "Assuming minimum keep-alive interval of 1 seconds\n");
+					par_wrapper -> ka_interval = 1;
+				}
+				break;	
 			default:
 				printf("\n");
 				help();
@@ -179,21 +167,47 @@ void help(void)
 	printf("Usage:\n");
 	printf(" parallel_wrapper [options] executable [args]\n");
 	printf("\n");
+	printf("Flags:\n");
+	printf(" --verbose                  verbose mode\n");
+	printf("\n");
+	
 	printf("Options:\n");
 	printf(" -h, --help                 this help message\n");
 	printf(" -r, --rank={value}         set the rank of this host\n");
 	printf(" -n {value}                 number of processes\n");
-	printf(" --verbose                  verbose mode\n");
-	printf(" -f, --flags={value}        flags to pass to mpi\n");
-	printf(" -m, --mpi={path}           path to the mpi executable\n");
 	printf(" -p, --ports={low:high}     port range to use\n");
-	printf(" -s, --scratch={path}       scratch directory to use\n");
-
 	printf("\n");
+
 	printf("Environment Variables:\n");
 	printf(" [_CONDOR_PROCNO]           set the rank of this host\n");
 	printf(" [_CONDOR_NUMPROCS]         number of processes\n");	
-	printf(" [MPI_FLAGS]                flags to pass to mpi\n");
-	printf(" [MPI_EXEC]                 path to the mpi executable\n");
+	printf("\n");
+	
+	printf("Environment Variables Set By Wrapper:\n");
+	printf(" [MACHINE_FILE]             the location of the machine file\n");
+	printf(" [HOST_FILE]                identical to [MACHINE_FILE]\n");
+	printf(" [SSH_CONFIG]               location of the SSH_CONFIG file\n");
+	printf(" [SSH_WRAPPER]              wrapper around ssh which uses [SSH_CONFIG]\n");
+	printf(" [REQUEST_CPUS]             the number of LOCAL cpus allocated (usually 1)\n");
+	printf(" [NUM_MACHINES]             the number of machines (num_machines)\n");
+	printf(" [NUM_PROCS]                total CPUs allocated for this task. This is\n");
+	printf("                            the sum of request cpus across all machines.\n");
+	printf(" [CPUS]                     identical to [NUM_PROC]\n");
+	printf(" [RANK]                     the rank of this process (MASTER)\n");
+	printf(" [CLUSTER_ID]               the Condor cluster ID\n");
+	printf(" [SCRATCH_DIR]              wrapper scratch directory\n");
+	printf(" [IWD]                      the job's initial working directory\n");
+	printf(" [IP_ADDR]                  the IP address of this host\n");
+	printf(" [CMD_PORT]                 the command port on this host\n");
+	printf(" [TRANSFER_FILES]           'TRUE'/'FALSE' depending on if the \n");
+	printf("                            IWD is shared across all hosts \n");
+	printf(" [SHARED_FS]                the location of the shared FS for\n");
+	printf("                            this MPI process. For jobs which have\n");
+	printf("                            [TRANSFER_FILES]='FALSE', this is a 'fake'\n");
+	printf("                            shared FS\n");
+	printf(" [SHARED_DIR]               identical to [SHARED_FS]\n");
+	printf("\n");
+	printf("\n");
+	
 	return;
 }

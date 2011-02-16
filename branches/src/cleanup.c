@@ -40,8 +40,11 @@ void cleanup(parallel_wrapper *par_wrapper, int return_code)
 				continue;
 			}
 			for (j = 0; j < 10; j++)
-			term(par_wrapper -> command_socket, return_code, 
+			{
+				term(par_wrapper -> command_socket, return_code, 
 					par_wrapper -> machines[i] -> ip_addr, par_wrapper -> machines[i] -> port);
+				usleep(100000); /* Sleep 1/10th second */
+			}
 		}
 	}
 

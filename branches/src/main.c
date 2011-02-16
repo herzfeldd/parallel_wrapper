@@ -17,7 +17,6 @@ int main(int argc, char **argv)
 	signal(SIGTERM, handle_exit_signal);
 	signal(SIGHUP, handle_exit_signal);
 
-
 	/* Allocate a new parallel_wrapper structure */
 	parallel_wrapper *par_wrapper = (parallel_wrapper *)calloc(1, sizeof(struct parallel_wrapper));
 	if (par_wrapper == (parallel_wrapper *)NULL)
@@ -35,13 +34,14 @@ int main(int argc, char **argv)
 	}
 
 	/* Fill in the default values for port ranges */
-	par_wrapper -> low_port = 51000;
-	par_wrapper -> high_port = 61000;
+	par_wrapper -> low_port = LOW_PORT;
+	par_wrapper -> high_port = HIGH_PORT;
 	/* Fill in other default values */
 	par_wrapper -> this_machine -> rank = -1;
 	par_wrapper -> num_procs = -1; 
 	par_wrapper -> command_socket = -1;
-	par_wrapper -> mpi_executable = strdup("mpiexec.hydra");
+	par_wrapper -> ka_interval = KA_INTERVAL;
+	par_wrapper -> timeout = TIMEOUT;
 	/* Default mutex state */
 	pthread_mutex_init(&par_wrapper -> mutex, NULL);
 	/* Allocate a list of symlinks */
@@ -81,6 +81,12 @@ int main(int argc, char **argv)
 		print(PRNT_ERR, "Invalid number of processors (%d). Environment variable or command option not set.\n",
 			par_wrapper -> num_procs);
 		return 2;
+	}
+	if (par_wrapper -> timeout <= 2*par_wrapper -> ka_interval)
+	{
+		print(PRNT_WARN, "Keep-alive interval and timeout too close. Using default values.\n");
+		par_wrapper -> timeout = TIMEOUT;
+		par_wrapper -> ka_interval = KA_INTERVAL;
 	}
 
 	/* Get the IP address for this machine */
@@ -285,15 +291,41 @@ int main(int argc, char **argv)
 			setenv("SSH_CONFIG", ssh_config, 1);
 		   	free(machine_file);
 			free(ssh_config);	
+			char *ssh_wrapper = join_paths(par_wrapper -> scratch_dir, SSH_WRAPPER);
+			setenv("SSH_WRAPPER", ssh_wrapper, 1);
+			free(ssh_wrapper);
 			char temp_str[1024];
-			snprintf(temp_str, 1024, "%d\n", par_wrapper -> num_procs);
-			setenv("NUM_PROC", temp_str, 1);
+			
+			snprintf(temp_str, 1024, "%d", par_wrapper -> num_procs);
+			setenv("NUM_MACHINES", temp_str, 1);
+		
+			/* Determine the total number of cpus allocated to this task */
+			int total_cpus = 0;
+			int i;
+			for (i = 0; i < par_wrapper -> num_procs; i++)
+			{
+				if (par_wrapper -> machines[i] == (machine *)NULL)
+				{
+					continue;
+				}
+				total_cpus += par_wrapper -> machines[i] -> cpus;
+			}
+			snprintf(temp_str, 1024, "%d", total_cpus);
+			setenv("CPUS", temp_str, 1);
 			setenv("NUM_PROCS", temp_str, 1);
-			setenv("SIZE", temp_str, 1);
-			snprintf(temp_str, 1024, "%d\n", par_wrapper -> this_machine -> rank);
+
+			snprintf(temp_str, 1024, "%d", par_wrapper -> this_machine -> rank);
 			setenv("RANK", temp_str, 1);
-			snprintf(temp_str, 1024, "%d\n", par_wrapper -> cluster_id);
+			
+			snprintf(temp_str, 1024, "%d", par_wrapper -> cluster_id);
 			setenv("CLUSTER_ID", temp_str, 1);
+			
+			snprintf(temp_str, 1024, "%d", par_wrapper -> this_machine -> port);
+			setenv("CMD_PORT", temp_str, 1);
+			
+			snprintf(temp_str, 1024, "%d", par_wrapper -> this_machine -> cpus);
+			setenv("REQUEST_CPUS", temp_str, 1);
+
 			setenv("SCRATCH_DIR", par_wrapper -> scratch_dir, 1);
 			setenv("IWD", par_wrapper -> this_machine -> iwd, 1);
 			setenv("IP_ADDR", par_wrapper -> this_machine -> ip_addr, 1);

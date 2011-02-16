@@ -38,6 +38,7 @@ struct udp_handler
 #define BUFFER_SIZE (1024u)
 
 /* Local Function Prototypes */
+static void *keep_alive(void *ptr);
 static void *process_message(void *ptr);
 static int handle_ack(struct udp_message *message);
 static int handle_query(struct udp_message *message);
@@ -99,6 +100,9 @@ void *udp_server(void *ptr)
 
 	/* At this point, we already have socket and a port */
 	int n = par_wrapper -> command_socket + 1;
+	struct timeval timeout;
+	timeout.tv_sec = par_wrapper -> ka_interval;
+	timeout.tv_usec = 0;
 	while ( 1 )
 	{
 		FD_ZERO(&readfds);
@@ -110,7 +114,14 @@ void *udp_server(void *ptr)
 		{
 			cleanup(par_wrapper, 250);
 		}
-		RC = select(n, &readfds, NULL, NULL, NULL);
+		if (par_wrapper -> this_machine -> rank != MASTER)
+		{
+			RC = select(n, &readfds, NULL, NULL, NULL);
+		}
+		else
+		{
+			RC = select(n, &readfds, NULL, NULL, &timeout);
+		}
 		if (RC == -1)
 		{
 			print(PRNT_ERR, "Select statement failed\n");
@@ -136,17 +147,96 @@ void *udp_server(void *ptr)
 			message -> args = strsplit(delim, buffer); 
 
 			/* Create the thread */
-			pthread_create(&thread, &attr, &process_message, message);
+			pthread_create(&thread, &attr, &process_message, (void *)message);
 		}
 		else
 		{
-			/* We timed out */
+			/* We timed out - send keep-alives (and check results) */	
+			timeout.tv_sec = par_wrapper -> ka_interval;
+			timeout.tv_usec = 0;
+			pthread_create(&thread, &attr, &keep_alive, (void *)par_wrapper); 
 		}
 	}	
 
 	return NULL;
 }
 
+/**
+ * Thread Entry Point: Send keep alive (QUERY) messages
+ *
+ * Attempt to send QUERY commands to all of the registered machines in the
+ * pool. The thread then sleeps for 1/4 the keep-alive interval for the
+ * machines to respond. It then checks to see if any machines have not 
+ * responded during the last keep-alive timeout interval. If so, the 
+ * cleanup command is sent. This is only performed by MASTER.
+ *
+ * @param ptr A void pointer to the parallel_wrapper
+ * @return NULL
+ */
+static void *keep_alive(void *ptr)
+{
+	int i, RC;
+	parallel_wrapper *par_wrapper = (parallel_wrapper *)ptr;
+	if (par_wrapper == (parallel_wrapper *)NULL)
+	{
+		print(PRNT_WARN, "Null parallel_wrapper passed to keep_alive handler\n");
+		return NULL;
+	}
+	if (par_wrapper -> machines == (machine **)NULL)
+	{
+		print(PRNT_WARN, "Null machines table\n");
+		return NULL;
+	}
+
+	/* Send keep-alives to all registered machines */
+	for (i = 0; i < par_wrapper -> num_procs; i++)
+	{
+		if (par_wrapper -> machines[i] == (machine *)NULL)
+		{
+			continue; /* This machine has not yet registered */
+		}
+		/* Send the query command */
+		RC = query(par_wrapper -> command_socket, par_wrapper -> machines[i] -> ip_addr,
+				par_wrapper -> machines[i] -> port);
+		if (RC != 0)
+		{
+			print(PRNT_WARN, "Failed to send QUERY to rank %d\n", i);
+		}
+	}
+
+	/* Sleep for a quarter of the keep-alive interval waiting for a response */
+	if (par_wrapper -> ka_interval > 4)
+	{
+		sleep(par_wrapper -> ka_interval / 4);
+	}
+	else
+	{
+		usleep((long)par_wrapper -> ka_interval * (long)1000000 / (long)4);
+	}
+	struct timeval curr_time;
+	gettimeofday(&curr_time, NULL);
+	struct timeval diff_time;
+	/* Make sure that all machines are alive */
+	for (i = 0; i < par_wrapper -> num_procs; i++)
+	{
+		if (par_wrapper -> machines[i] == (machine *)NULL)
+		{
+			continue; /* This machine has not yet registered */
+		}
+		timersub(&curr_time, &par_wrapper -> machines[i] -> last_alive, &diff_time);
+		if (diff_time.tv_sec > par_wrapper -> timeout)
+		{
+			print(PRNT_WARN, "Rank %d (%s:%d) has exceeded the timeout interval (%d). Aborting\n",
+					i, par_wrapper -> machines[i] -> ip_addr, 
+					par_wrapper -> machines[i] -> port, par_wrapper -> timeout);
+			pthread_cancel(par_wrapper -> listener);
+			cleanup(par_wrapper, 250);
+		}
+	}
+
+	debug(PRNT_INFO, "All machines alive.\n");
+	return NULL;
+}
 
 /**
  * Thread Entry Point: Process and new message

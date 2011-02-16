@@ -18,6 +18,10 @@
 #include "log.h"
 
 #define MASTER (0u)
+#define LOW_PORT (51000u)
+#define HIGH_PORT (61000u)
+#define TIMEOUT (60*5) /* keep-alive timeout 5 minutes */ 
+#define KA_INTERVAL (30) /* keep-alive interval seconds */
 
 extern int exit_flag;
 
@@ -39,6 +43,8 @@ typedef struct parallel_wrapper
 	int executable_length; /**< The length of the executable array */
 	int num_procs; /**< The number of processors */
 	int command_socket; /**< The FD for the command socket */
+	int timeout; /**< The keepalive timeout */
+	int ka_interval; /**< The keepalive interval */
 	uint16_t low_port; /**< The lower port */
 	uint16_t high_port; /**< High port */
 	machine *this_machine; /**< This machine */
@@ -46,8 +52,6 @@ typedef struct parallel_wrapper
 	pthread_t listener; /**< The pthread associated with the network listener */
 	pthread_mutex_t mutex; /**< Semaphore */
 	char *scratch_dir; /**< The scratch directory to use */
-	char *mpi_flags; /**< Flags to the MPI executable */
-	char *mpi_executable; /**< MPI Executable */
 	char *shared_fs; /**< The shared file system */
 	char **executable; /**< Array holding the passed executable and args */
 	machine **machines; /**< All machines (for the master only) */
