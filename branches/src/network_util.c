@@ -29,7 +29,8 @@ char *get_ip_addr(void)
 	}	
 	
 	memset(&hints, 0, sizeof(hints));
-	hints.ai_family = AF_UNSPEC; /* IPv4 or IPv6 */
+	//hints.ai_family = AF_UNSPEC; /* IPv4 or IPv6 */
+	hints.ai_family = AF_INET; /* IPv4 ONLY */
 	hints.ai_socktype = SOCK_DGRAM; /* UDP packets */
 	hints.ai_flags = AI_ADDRCONFIG;
 	if (getaddrinfo(hostname, NULL, &hints, &info) != 0)
@@ -157,7 +158,8 @@ int get_bound_dgram_socket(uint16_t port)
 	memset(&hints, 0, sizeof(struct addrinfo));
 	
 	/* Bind to local host */
-	hints.ai_family = AF_UNSPEC; /* IPv4 or IPv6 */
+	//hints.ai_family = AF_UNSPEC; /* IPv4 or IPv6 */
+	hints.ai_family = AF_INET; /* IPv4 Only */
 	hints.ai_socktype = SOCK_DGRAM; /* UDP Packets */
 	hints.ai_flags = AI_PASSIVE; /* Fill in my IP For me */
 	if (getaddrinfo(NULL, char_port, &hints, &info) != 0)
@@ -263,7 +265,8 @@ int send_string_to_ip_port(char *ip, uint16_t port, char *string, int socketfd)
 	/* Attempt to send the string */
 	memset(&hints, 0, sizeof(hints));
 	
-	hints.ai_family = AF_UNSPEC;
+	//hints.ai_family = AF_UNSPEC;
+	hints.ai_family = AF_INET;
 	hints.ai_socktype = SOCK_DGRAM;
 	hints.ai_flags = AI_ADDRCONFIG;
 	if ((gai_result = getaddrinfo(ip, char_port, &hints, &info)) != 0)

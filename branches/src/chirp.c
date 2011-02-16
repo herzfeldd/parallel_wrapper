@@ -11,12 +11,33 @@
 int chirp_info(parallel_wrapper *par_wrapper)
 {
 	int RC;
+	/* Lock the parallel wrapper structure */
+	pthread_mutex_lock(&par_wrapper -> mutex);
+	/* Change to the TMP directory */
+	char *dir = getenv("TMPDIR");
+	char *prev_dir = calloc(1024, sizeof(char));
+	getcwd(prev_dir, 1024);
+	if (dir == (char *)NULL)
+	{
+		dir = getenv("_CONDOR_SCRATCH_DIR");
+	}
+	if (dir != (char *)NULL)
+	{
+		chdir(dir);
+	}
 	struct chirp_client *chirp = chirp_client_connect_default();
 	if (chirp == (struct chirp_client *)NULL)
 	{
 		print(PRNT_ERR, "Unable to open chirp context\n");
 		return 1;
 	}
+	/* Change back to the original directory */
+	if (dir != (char *)NULL)
+	{
+		chdir(prev_dir);
+	}
+	free(prev_dir);
+	pthread_mutex_unlock(&par_wrapper -> mutex);
 
 	RC = get_chirp_integer(chirp, "RequestCpus", &par_wrapper -> this_machine -> cpus);
 	if (RC != 0)

@@ -380,7 +380,9 @@ static int handle_term(struct udp_message *message)
 		}
 
 		/* Term signal is valid */
-		print(PRNT_INFO, "Received valid term signal from master. Exitting.\n");
+		debug(PRNT_INFO, "Received valid term signal from master. Exitting.\n");
+		/* Cancel the listener thread */
+		pthread_cancel(message -> par_wrapper -> listener);
 		free(ip_addr);
 		cleanup(message -> par_wrapper, return_code);
 	}

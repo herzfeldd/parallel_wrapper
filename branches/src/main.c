@@ -204,8 +204,16 @@ int main(int argc, char **argv)
 		}
 		for (i = 0; i < par_wrapper -> num_procs; i++)
 		{
+			if (par_wrapper -> machines[i] -> unique == 0)
+			{
+				continue; /* This host is already not unique */
+			}
 			for (j = i + 1; j < par_wrapper -> num_procs; j++)
 			{
+				if (par_wrapper -> machines[j] -> unique == 0)
+				{
+					continue; /* This host is already not unique */
+				}	
 				if (strcmp(par_wrapper -> machines[i] -> ip_addr, par_wrapper -> machines[j] -> ip_addr) == 0)
 				{
 					par_wrapper -> machines[j] -> unique = 0;
@@ -280,6 +288,8 @@ int main(int argc, char **argv)
 			char temp_str[1024];
 			snprintf(temp_str, 1024, "%d\n", par_wrapper -> num_procs);
 			setenv("NUM_PROC", temp_str, 1);
+			setenv("NUM_PROCS", temp_str, 1);
+			setenv("SIZE", temp_str, 1);
 			snprintf(temp_str, 1024, "%d\n", par_wrapper -> this_machine -> rank);
 			setenv("RANK", temp_str, 1);
 			snprintf(temp_str, 1024, "%d\n", par_wrapper -> cluster_id);
@@ -289,6 +299,7 @@ int main(int argc, char **argv)
 			setenv("IP_ADDR", par_wrapper -> this_machine -> ip_addr, 1);
 			setenv("TRANSFER_FILES", shared_fs != 0 ? "TRUE" : "FALSE", 1); 
 			setenv("SHARED_FS", shared_fs != 0 ? par_wrapper -> this_machine -> iwd : par_wrapper -> shared_fs, 1);
+			setenv("SHARED_DIR", shared_fs != 0 ? par_wrapper -> this_machine -> iwd : par_wrapper -> shared_fs, 1);
 			/* TODO: SSH ENVS */
 
 			/* Search in path */
