@@ -288,9 +288,18 @@ int main(int argc, char **argv)
 					continue;
 				}
 				/* Send the command to create softlinks */
-				create_link(par_wrapper -> command_socket, par_wrapper -> machines[i] -> iwd,
-						fake_fs, par_wrapper -> machines[i] -> ip_addr, 
-						par_wrapper -> machines[i] -> port);
+				struct timeval old_time = par_wrapper -> machines[i] -> last_alive;
+				while ( 1 )
+				{
+					RC = create_link(par_wrapper -> command_socket, par_wrapper -> machines[i] -> iwd,
+							fake_fs, par_wrapper -> machines[i] -> ip_addr, 
+							par_wrapper -> machines[i] -> port);
+					usleep(100000); /* Sleep for 1/10th of a second */
+					if (RC == 0 && ! timercmp(&old_time, &par_wrapper -> machines[i] -> last_alive, =))
+					{
+						break;
+					}
+				}
 			}
 			par_wrapper -> shared_fs = strdup(fake_fs);
 		}

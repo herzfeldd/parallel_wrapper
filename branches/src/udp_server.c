@@ -511,6 +511,31 @@ static int handle_create_link(struct udp_message *message)
 		return 3;
 	}
 
+	/* Look for this destination in the list of already created softlinks */
+	struct sll_element *curr_element = message -> par_wrapper -> symlinks -> head -> next;
+	while (curr_element != (struct sll_element *)NULL)
+	{
+		char *link_name = (char *)curr_element -> ptr;
+		if (link_name != (char *)NULL)
+		{
+			if (strcmp(link_name, message -> args -> strings[2]) == 0)
+			{
+				print(PRNT_WARN, "Symlink at %s already exists. Sending ACK\n",
+						message -> args -> strings[2]);
+				RC = ack(message -> par_wrapper -> command_socket, 
+					message -> par_wrapper -> this_machine -> rank, 
+					(struct sockaddr *)&message -> from); 
+				if (RC != 0)
+				{
+					print(PRNT_WARN, "Unable to send ACK for CREATE_LINK\n");
+				}
+				return 0;
+			}
+		}
+		curr_element = curr_element -> next; /* Move onto the next element */
+	}
+	/* This is a unique symlink destination */
+
 	/* Attempt to create the softlink */
 	if (symlink(message -> args -> strings[1], message -> args -> strings[2]) != 0)
 	{
