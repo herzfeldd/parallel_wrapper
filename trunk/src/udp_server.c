@@ -1,6 +1,6 @@
 #include "wrapper.h"
 #include "string_util.h"
-
+#include <pthread.h>
 /* STAT */
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -65,6 +65,11 @@ int jmpset = 0;
 sigjmp_buf jmpbuf;
 
 /**
+ * Keep-alive semaphore
+ */
+pthread_mutex_t keep_alive_mutex;
+
+/**
  * Starts a UDP server
  *
  * Starts a UDP server on a UDP port. The port is chosen within
@@ -86,7 +91,12 @@ void *udp_server(void *ptr)
 	pthread_attr_t attr;
 	pthread_t thread;
 	default_pthead_attr(&attr);
+	/* Set these threads as detached - no reason to join 
+	 need to release resources back to the system */
+	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
 	fd_set readfds;
+	pthread_mutex_init(&keep_alive_mutex, NULL);
 
 	char delim[] = {':', '|'};
 
@@ -147,14 +157,22 @@ void *udp_server(void *ptr)
 			message -> args = strsplit(delim, buffer); 
 
 			/* Create the thread */
-			pthread_create(&thread, &attr, &process_message, (void *)message);
+			RC = pthread_create(&thread, &attr, &process_message, (void *)message);
+			if (RC != 0)
+			{
+				print(PRNT_WARN, "Unable to create message thread, RC = %d\n", RC);
+			}
 		}
 		else
 		{
 			/* We timed out - send keep-alives (and check results) */	
 			timeout.tv_sec = par_wrapper -> ka_interval;
 			timeout.tv_usec = 0;
-			pthread_create(&thread, &attr, &keep_alive, (void *)par_wrapper); 
+			RC = pthread_create(&thread, &attr, &keep_alive, (void *)par_wrapper); 
+			if (RC != 0)
+			{
+				print(PRNT_WARN, "Unable to create keep-alive thread, RC = %d\n", RC);
+			}
 		}
 	}	
 
@@ -188,6 +206,13 @@ static void *keep_alive(void *ptr)
 		return NULL;
 	}
 
+	/* Obtain the lock on the mutex */
+	if (pthread_mutex_trylock(&keep_alive_mutex) != 0)
+	{
+		/* We weren't able to obtain the mutex */
+		return NULL;
+	}
+		
 	/* Send keep-alives to all registered machines */
 	for (i = 0; i < par_wrapper -> num_procs; i++)
 	{
@@ -226,14 +251,14 @@ static void *keep_alive(void *ptr)
 		timersub(&curr_time, &par_wrapper -> machines[i] -> last_alive, &diff_time);
 		if (diff_time.tv_sec > par_wrapper -> timeout)
 		{
+			pthread_mutex_unlock(&keep_alive_mutex);
 			print(PRNT_WARN, "Rank %d (%s:%d) has exceeded the timeout interval (%d). Aborting\n",
 					i, par_wrapper -> machines[i] -> ip_addr, 
 					par_wrapper -> machines[i] -> port, par_wrapper -> timeout);
-			pthread_cancel(par_wrapper -> listener);
 			cleanup(par_wrapper, 250);
 		}
 	}
-
+	pthread_mutex_unlock(&keep_alive_mutex);
 	debug(PRNT_INFO, "All machines alive.\n");
 	return NULL;
 }
