@@ -53,19 +53,29 @@ int chirp_info(parallel_wrapper *par_wrapper)
 		par_wrapper -> cluster_id = rand();
 	}
 
+	RC = get_chirp_integer(chirp, "EnteredCurrentStatus", &par_wrapper -> entered_current_status);
+	if (RC != 0)
+	{
+		print(PRNT_WARN, "Failed to get EnteredCurrentStatus from classad.\n");
+		return 2;
+	}
+
 	/* Send the MASTER information back to the schedd */
 	if (par_wrapper -> this_machine -> rank == MASTER)
 	{
 		char temp_str[1024];
 		snprintf(temp_str, 1024, "\"%s\"", par_wrapper -> this_machine -> ip_addr);
-		RC = chirp_client_set_job_attr(chirp, "MasterIpAddr",  temp_str);
+		char temp_str2[1024];
+		snprintf(temp_str2, 1024, "MasterIpAddr_%d", par_wrapper -> entered_current_status);
+		RC = chirp_client_set_job_attr(chirp, temp_str2,  temp_str);
 		if (RC != 0)
 		{
 			print(PRNT_ERR, "Unable to send MasterIpAddr to the chirp server\n");
 			return 3;
 		}
+		snprintf(temp_str2, 1024, "MasterPort_%d", par_wrapper -> entered_current_status);
 		snprintf(temp_str, 1024, "%d", par_wrapper -> this_machine -> port);
-		RC = chirp_client_set_job_attr(chirp, "MasterPort", temp_str);
+		RC = chirp_client_set_job_attr(chirp, temp_str2, temp_str);
 		if (RC != 0)
 		{
 			print(PRNT_ERR, "Unable to send MasterPort to the chirp server\n");
@@ -74,20 +84,23 @@ int chirp_info(parallel_wrapper *par_wrapper)
 	}
 	else /* I am not the master */
 	{
+		char temp_str2[1024];
+		snprintf(temp_str2, 1024, "MasterIpAddr_%d", par_wrapper -> entered_current_status);
 		/* Attempt to get the MasterIpAddr and MasterPort for the chirp server */
 		while ( 1 )
 		{
-			RC = get_chirp_string(chirp, "MasterIpAddr", &par_wrapper -> master -> ip_addr); 	
+			RC = get_chirp_string(chirp, temp_str2, &par_wrapper -> master -> ip_addr); 	
 			if (RC == 0)
 			{
 				break;
 			}
 			sleep(1);
 		}
+		snprintf(temp_str2, 1024, "MasterPort_%d", par_wrapper -> entered_current_status);
 		while ( 1 )
 		{
 			int port;
-			RC = get_chirp_integer(chirp, "MasterPort", &port); 	
+			RC = get_chirp_integer(chirp, temp_str2, &port); 	
 			if (RC == 0)
 			{
 				par_wrapper -> master -> port = (uint16_t) port;

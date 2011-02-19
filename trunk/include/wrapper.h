@@ -40,6 +40,7 @@ typedef struct machine
 typedef struct parallel_wrapper
 {
 	int cluster_id; /**< The condor cluster id */
+	int entered_current_status; /**< When did we enter the current state */
 	int executable_length; /**< The length of the executable array */
 	int num_procs; /**< The number of processors */
 	int command_socket; /**< The FD for the command socket */

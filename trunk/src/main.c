@@ -6,11 +6,17 @@
 #include <sys/wait.h>
 #include <pwd.h>
 
+/* Keep-alive mutex */
+pthread_mutex_t keep_alive_mutex;
+
 int main(int argc, char **argv)
 {
 	int RC;
 	pthread_attr_t attr;
 	default_pthead_attr(&attr);
+	pthread_mutex_init(&keep_alive_mutex, NULL);
+	/* Lock the keep-alive mutex */
+	pthread_mutex_lock(&keep_alive_mutex);
 
 	/* Install command signal handlers */
 	signal(SIGINT, handle_exit_signal);
@@ -158,6 +164,7 @@ int main(int argc, char **argv)
 		int i, j;
 		for (i = 0; i < par_wrapper -> num_procs; i++)
 		{
+			j = 0; /* Timeout = 0 */
 			while ( 1 )
 			{
 				if (par_wrapper -> machines[i] != NULL)
@@ -201,11 +208,14 @@ int main(int argc, char **argv)
 				par_wrapper -> this_machine -> cpus,
 				par_wrapper -> this_machine -> iwd, par_wrapper -> this_machine -> user, par_wrapper -> master -> ip_addr, 
 				par_wrapper -> master -> port);		
-			if (RC == 0 && ! timercmp(&old_time, &par_wrapper -> master -> last_alive, =))
+			sleep(1);
+			if (RC == 0 && 
+			   ((old_time.tv_sec != par_wrapper -> master -> last_alive.tv_sec) || 
+			   (old_time.tv_usec != par_wrapper -> master -> last_alive.tv_usec)))
 			{
 				break;
-			}		
-			sleep(1);
+			}
+				debug(PRNT_INFO, "Waiting for ACK from mater\n"); 
 		}
 	}
 
@@ -295,10 +305,13 @@ int main(int argc, char **argv)
 							fake_fs, par_wrapper -> machines[i] -> ip_addr, 
 							par_wrapper -> machines[i] -> port);
 					usleep(100000); /* Sleep for 1/10th of a second */
-					if (RC == 0 && ! timercmp(&old_time, &par_wrapper -> machines[i] -> last_alive, =))
+					if (RC == 0 && 
+					   ((old_time.tv_sec != par_wrapper -> machines[i] -> last_alive.tv_sec) || 
+					   (old_time.tv_usec != par_wrapper -> machines[i] -> last_alive.tv_usec)))
 					{
 						break;
 					}
+					debug(PRNT_INFO, "Waiting for ACK from rank %d\n", i);
 				}
 			}
 			par_wrapper -> shared_fs = strdup(fake_fs);
@@ -309,6 +322,8 @@ int main(int argc, char **argv)
 			debug(PRNT_INFO, "Using a shared file system, IWD = %s\n", par_wrapper -> master -> iwd);
 		}
 	}
+	/* Unlock the keepalive mutex */
+	pthread_mutex_unlock(&keep_alive_mutex);
 
 	/* Start up the MPI executable */
 	if (par_wrapper -> this_machine -> rank == MASTER)

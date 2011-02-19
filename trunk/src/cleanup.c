@@ -4,6 +4,7 @@
 #include <signal.h>
 #include <setjmp.h>
 int exit_flag = 0;
+extern pthread_mutex_t keep_alive_mutex;
 
 /**
  * Signal handler (SIGINT, SIGTERM, SIGHUP...)
@@ -28,6 +29,8 @@ void handle_exit_signal(int signal)
 void cleanup(parallel_wrapper *par_wrapper, int return_code)
 {
 	int i, j;
+	/* Try to lock the keep-alive mutex */
+	pthread_mutex_trylock(&keep_alive_mutex);
 	if (par_wrapper -> this_machine -> rank == MASTER && 
 			par_wrapper -> machines != (machine **)NULL)
 	{
@@ -49,7 +52,7 @@ void cleanup(parallel_wrapper *par_wrapper, int return_code)
 	}
 
 	/* Lock the parallel_wrapper structure */
-	pthread_mutex_lock(&par_wrapper -> mutex);
+	pthread_mutex_trylock(&par_wrapper -> mutex);
 
 	/* Clean up the scratch directory */
 	cleanup_scratch(par_wrapper -> scratch_dir);

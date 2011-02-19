@@ -67,7 +67,7 @@ sigjmp_buf jmpbuf;
 /**
  * Keep-alive semaphore
  */
-pthread_mutex_t keep_alive_mutex;
+extern pthread_mutex_t keep_alive_mutex;
 
 /**
  * Starts a UDP server
@@ -96,7 +96,6 @@ void *udp_server(void *ptr)
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 
 	fd_set readfds;
-	pthread_mutex_init(&keep_alive_mutex, NULL);
 
 	char delim[] = {':', '|'};
 
@@ -417,6 +416,7 @@ static int handle_ack(struct udp_message *message)
 	   	return 5;	
 	}
 	free(ip_addr);
+	/*debug(PRNT_INFO, "Received ACK from rank %d\n", rank);*/
 	/* Update the last seen from time */
 	pthread_mutex_lock(&par_wrapper -> mutex);
 	gettimeofday(&par_wrapper -> machines[rank] -> last_alive, NULL);
