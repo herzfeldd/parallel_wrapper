@@ -51,6 +51,20 @@ void cleanup(parallel_wrapper *par_wrapper, int return_code)
 		}
 	}
 
+	/* If we spawned subgroups, attempt to kill them all */
+	if (par_wrapper -> pgid > 0 && par_wrapper -> child_pid > 0)
+	{
+		int RC = killpg(par_wrapper -> child_pid, SIGTERM);
+		if (RC == EPERM)
+		{
+			print(PRNT_WARN, "Unable to kill child pid %d - permission denied\n");
+		}
+		else if (RC == 0)
+		{
+			debug(PRNT_INFO, "Sent SIGTERM to child group %d\n", par_wrapper -> child_pid);
+		}
+	}
+
 	/* Lock the parallel_wrapper structure */
 	pthread_mutex_trylock(&par_wrapper -> mutex);
 

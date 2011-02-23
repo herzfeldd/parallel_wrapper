@@ -46,6 +46,8 @@ typedef struct parallel_wrapper
 	int command_socket; /**< The FD for the command socket */
 	int timeout; /**< The keepalive timeout */
 	int ka_interval; /**< The keepalive interval */
+	pid_t child_pid; /**< The child pid */
+	pid_t pgid; /* Process group id */
 	uint16_t low_port; /**< The lower port */
 	uint16_t high_port; /**< High port */
 	machine *this_machine; /**< This machine */

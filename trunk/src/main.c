@@ -18,11 +18,6 @@ int main(int argc, char **argv)
 	/* Lock the keep-alive mutex */
 	pthread_mutex_lock(&keep_alive_mutex);
 
-	/* Install command signal handlers */
-	signal(SIGINT, handle_exit_signal);
-	signal(SIGTERM, handle_exit_signal);
-	signal(SIGHUP, handle_exit_signal);
-
 	/* Allocate a new parallel_wrapper structure */
 	parallel_wrapper *par_wrapper = (parallel_wrapper *)calloc(1, sizeof(struct parallel_wrapper));
 	if (par_wrapper == (parallel_wrapper *)NULL)
@@ -30,6 +25,10 @@ int main(int argc, char **argv)
 		print(PRNT_ERR, "Unable to allocate space for parallel wrapper\n");
 		return 1;
 	}
+	/* Install command signal handlers */
+	signal(SIGINT, handle_exit_signal);
+	signal(SIGTERM, handle_exit_signal);
+	signal(SIGHUP, handle_exit_signal);
 
 	/* Create structures for this machine */
 	par_wrapper -> this_machine = calloc(1, sizeof(struct machine));
@@ -46,6 +45,7 @@ int main(int argc, char **argv)
 	par_wrapper -> this_machine -> rank = -1;
 	par_wrapper -> num_procs = -1; 
 	par_wrapper -> command_socket = -1;
+	par_wrapper -> pgid = -1;
 	par_wrapper -> ka_interval = KA_INTERVAL;
 	par_wrapper -> timeout = TIMEOUT;
 	/* Default mutex state */
@@ -328,13 +328,13 @@ int main(int argc, char **argv)
 	/* Start up the MPI executable */
 	if (par_wrapper -> this_machine -> rank == MASTER)
 	{
-		pid_t p = fork();
-		if (p == (pid_t) -1)
+		par_wrapper -> child_pid = fork();
+		if (par_wrapper -> child_pid == (pid_t) -1)
 		{
 			print(PRNT_ERR, "Fork failed\n");
 			cleanup(par_wrapper, 10);
 		}
-		else if (p == (pid_t) 0)
+		else if (par_wrapper -> child_pid == (pid_t) 0)
 		{
 			/* I am the child */
 			prctl(PR_SET_PDEATHSIG, SIGTERM);
@@ -400,10 +400,17 @@ int main(int argc, char **argv)
 		{
 			/* I am the parent */
 			int child_status = 0;
-			waitpid(p, &child_status, WUNTRACED); /* Wait for the child to finish */
+			/* Create a new group for the child processes */
+			par_wrapper -> pgid = setpgid(par_wrapper -> child_pid, 
+					par_wrapper -> child_pid);			
+			if (par_wrapper -> pgid < 0)
+			{
+				print(PRNT_WARN, "Unable to set process group for children\n");
+			}
+			
+			waitpid(par_wrapper -> child_pid, &child_status, WUNTRACED); /* Wait for the child to finish */
 			cleanup(par_wrapper, child_status);
 		}
-
 	}
 
 	/* Always wait for the listener */
