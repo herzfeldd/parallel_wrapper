@@ -196,7 +196,8 @@ void help(void)
 	printf(" [RANK]                     the rank of this process (MASTER)\n");
 	printf(" [CLUSTER_ID]               the Condor cluster ID\n");
 	printf(" [SCRATCH_DIR]              wrapper scratch directory\n");
-	printf(" [IWD]                      the job's initial working directory\n");
+	printf(" [IWD]                      the job's initial working directory on the startd\n");
+	printf(" [SCHEDD_IWD]               the job's initial working directory on the schedd\n");
 	printf(" [IP_ADDR]                  the IP address of this host\n");
 	printf(" [CMD_PORT]                 the command port on this host\n");
 	printf(" [TRANSFER_FILES]           'TRUE'/'FALSE' depending on if the \n");

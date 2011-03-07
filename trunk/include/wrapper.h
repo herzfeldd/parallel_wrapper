@@ -34,6 +34,7 @@ typedef struct machine
 	char *iwd; /**< Initial working directory */
 	char *ip_addr; /**< The IP address associated with the machine */
 	char *user; /**< The username associated with this machine */
+	char *schedd_iwd; /**< The IWD on the schedd */
 	struct timeval last_alive;
 } machine;
 

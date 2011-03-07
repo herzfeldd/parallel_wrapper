@@ -59,6 +59,14 @@ int chirp_info(parallel_wrapper *par_wrapper)
 		print(PRNT_WARN, "Failed to get EnteredCurrentStatus from classad.\n");
 		return 2;
 	}
+	
+	RC = get_chirp_string(chirp, "IWD", &par_wrapper -> this_machine -> schedd_iwd);
+	if (RC != 0)
+	{
+		print(PRNT_WARN, "Failed to get IWD from classad. Assuming the current directory.");
+		par_wrapper -> this_machine -> schedd_iwd = (char *) malloc(1024 * sizeof(char));
+		getcwd(par_wrapper -> this_machine -> schedd_iwd, 1024);
+	}	
 
 	/* Send the MASTER information back to the schedd */
 	if (par_wrapper -> this_machine -> rank == MASTER)

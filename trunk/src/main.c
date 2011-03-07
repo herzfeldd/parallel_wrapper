@@ -386,6 +386,7 @@ int main(int argc, char **argv)
 			setenv("TRANSFER_FILES", shared_fs != 0 ? "TRUE" : "FALSE", 1); 
 			setenv("SHARED_FS", shared_fs != 0 ? par_wrapper -> this_machine -> iwd : par_wrapper -> shared_fs, 1);
 			setenv("SHARED_DIR", shared_fs != 0 ? par_wrapper -> this_machine -> iwd : par_wrapper -> shared_fs, 1);
+			setenv("SCHEDD_IWD", par_wrapper -> this_machine -> schedd_iwd, 1);
 			/* TODO: SSH ENVS */
 
 			/* Search in path */
