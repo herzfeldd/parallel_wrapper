@@ -23,6 +23,7 @@ void parse_environment_vars(parallel_wrapper *par_wrapper)
 void set_environment_vars(parallel_wrapper *par_wrapper)
 {
 	/* Get the path variable */
+	int string_length = 2048; /* Minimum string length */
 	char *temp = getenv("PATH");
 	char *path = (char *) calloc(2048, sizeof(char));
 	if (path == (char *)NULL)
@@ -30,7 +31,11 @@ void set_environment_vars(parallel_wrapper *par_wrapper)
 		print(PRNT_WARN, "Unable to allocate space for new path variable\n");
 		return;
 	}
-	snprintf(path, 2048, "%s:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin:.", temp == (char *)NULL ? "" : temp);
+	if (temp != (char *)NULL)
+	{
+		string_length += strlen(temp);
+	}
+	snprintf(path, string_length - 1, "%s:/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin:.", temp == (char *)NULL ? "" : temp);
 	setenv("PATH", path, 1); /* Replace path */
 	free(path);
 }
