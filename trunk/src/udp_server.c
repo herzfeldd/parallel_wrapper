@@ -314,7 +314,10 @@ static void *process_message(void *ptr)
 				print(PRNT_WARN, "Failed to handle command %d. RC = %d\n", command, RC);
 			}
 			free_strarray(message -> args);
-			free(message);
+			if (message != (struct udp_message *)NULL)
+			{
+				free(message);
+			}
 			return NULL;
 		}
 		temp++; /* Move on to next handler */

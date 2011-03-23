@@ -346,18 +346,16 @@ char *join_paths(const char *path_1, const char *path_2)
 	char *output_path = (char *) NULL;
 	if (path_1 == (char *)NULL)
 	{
-		output_path = (char *) malloc(sizeof(char) * strlen(path_2));
-		strcpy(output_path, path_2);
+		output_path = strdup(path_2); 
 		return output_path;
 	}
 	if (path_2 == (char *)NULL)
 	{
-		output_path = (char *) malloc(sizeof(char) * strlen(path_1));
-		strcpy(output_path, path_1);
+		output_path = strdup(path_1);
 		return output_path;
 	}
 	/* OK, we have both paths, we can start combining */
-	output_path = (char *) malloc(sizeof(char) * strlen(path_1) + strlen(path_2) + 1);
+	output_path = (char *) malloc(sizeof(char) * strlen(path_1) + strlen(path_2) + 5);
 	if (output_path == (char *) NULL)
 	{
 		return NULL;
@@ -389,6 +387,10 @@ char *join_paths(const char *path_1, const char *path_2)
 		output_path[output_len + i - start_index] = path_2[i];
 	}
 	output_path[output_len + i] = '\0'; /* Null terminate */
+	/* Reallocate the string to be exactly the length we need */
+	output_path = realloc(output_path, sizeof(char) * strlen(output_path) + 1); /* Make sure we have room for null */
 
 	return output_path;
 }
+
+
