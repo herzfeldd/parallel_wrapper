@@ -17,6 +17,7 @@ typedef enum CMD
 
 extern int jmpset;
 extern sigjmp_buf jmpbuf;
+extern int disable_timeout;
 
 extern void *udp_server(void *ptr);
 extern int ack(int socketfd, int rank, const struct sockaddr *addr);

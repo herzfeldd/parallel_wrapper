@@ -37,6 +37,11 @@ struct udp_handler
 
 #define BUFFER_SIZE (1024u)
 
+/**
+ * Global Variables
+ */
+int disable_timeout = 0; /* Keep timeouts enabled */
+
 /* Local Function Prototypes */
 static void *keep_alive(void *ptr);
 static void *process_message(void *ptr);
@@ -164,13 +169,16 @@ void *udp_server(void *ptr)
 		}
 		else
 		{
-			/* We timed out - send keep-alives (and check results) */	
-			timeout.tv_sec = par_wrapper -> ka_interval;
-			timeout.tv_usec = 0;
-			RC = pthread_create(&thread, &attr, &keep_alive, (void *)par_wrapper); 
-			if (RC != 0)
+			if (disable_timeout == 0)
 			{
-				print(PRNT_WARN, "Unable to create keep-alive thread, RC = %d\n", RC);
+				/* We timed out - send keep-alives (and check results) */	
+				timeout.tv_sec = par_wrapper -> ka_interval;
+				timeout.tv_usec = 0;
+				RC = pthread_create(&thread, &attr, &keep_alive, (void *)par_wrapper); 
+				if (RC != 0)
+				{
+					print(PRNT_WARN, "Unable to create keep-alive thread, RC = %d\n", RC);
+				}
 			}
 		}
 	}	

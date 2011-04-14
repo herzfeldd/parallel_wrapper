@@ -56,6 +56,7 @@ int parse_args(int argc, char **argv, parallel_wrapper *par_wrapper)
 			{"ports", required_argument, 0, 'p'},
 			{"timeout", required_argument, 0, 't'},
 			{"ka-interval", required_argument, 0, 'k'},
+			{"no-timeout", no_argument, &disable_timeout, 1},
 			{0, 0, 0, 0}
 		};
 		int option_index = 0;
@@ -174,6 +175,7 @@ void help(void)
 	printf("\n");
 	printf("Flags:\n");
 	printf(" --verbose                  verbose mode\n");
+	printf(" --no-timeout               disable aborts due to timeouts\n");
 	printf("\n");
 	
 	printf("Options:\n");
@@ -181,6 +183,8 @@ void help(void)
 	printf(" -r, --rank={value}         set the rank of this host\n");
 	printf(" -n {value}                 number of processes\n");
 	printf(" -p, --ports={low:high}     port range to use\n");
+	printf(" -t, --timeout={value}      set the execute timeouts (sec)\n");
+	printf(" -k, --ka-interval={value}  interval between subsequent keep-alives\n");
 	printf("\n");
 
 	printf("Environment Variables:\n");

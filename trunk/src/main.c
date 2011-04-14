@@ -88,7 +88,7 @@ int main(int argc, char **argv)
 			par_wrapper -> num_procs);
 		return 2;
 	}
-	if (par_wrapper -> timeout <= 2*par_wrapper -> ka_interval)
+	if (par_wrapper -> timeout <= (2*par_wrapper -> ka_interval))
 	{
 		print(PRNT_WARN, "Keep-alive interval and timeout too close. Using default values.\n");
 		par_wrapper -> timeout = TIMEOUT;
