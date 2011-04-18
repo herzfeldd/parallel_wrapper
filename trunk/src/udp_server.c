@@ -169,11 +169,11 @@ void *udp_server(void *ptr)
 		}
 		else
 		{
+			timeout.tv_sec = par_wrapper -> ka_interval;
+			timeout.tv_usec = 0;
 			if (disable_timeout == 0)
 			{
 				/* We timed out - send keep-alives (and check results) */	
-				timeout.tv_sec = par_wrapper -> ka_interval;
-				timeout.tv_usec = 0;
 				RC = pthread_create(&thread, &attr, &keep_alive, (void *)par_wrapper); 
 				if (RC != 0)
 				{
