@@ -32,10 +32,10 @@ char *get_ip_addr(void)
 	//hints.ai_family = AF_UNSPEC; /* IPv4 or IPv6 */
 	hints.ai_family = AF_INET; /* IPv4 ONLY */
 	hints.ai_socktype = SOCK_DGRAM; /* UDP packets */
-	hints.ai_flags = AI_ADDRCONFIG;
+	hints.ai_flags = AI_PASSIVE | AI_ADDRCONFIG; 
 	if (getaddrinfo(hostname, NULL, &hints, &info) != 0)
 	{
-		print(PRNT_ERR, "Unable to get addrinfo\n");
+		print(PRNT_ERR, "Unable to get addrinfo for hostname %s\n", hostname);
 		free(ip_addr);
 		return NULL;
 	}
