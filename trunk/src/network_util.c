@@ -62,6 +62,7 @@ char *get_ip_addr(void)
 char *get_ip_addr(void)
 {
     struct ifaddrs *myaddrs, *ifa;
+	int i;
 
 	char *ip_addr = malloc(sizeof(char) * INET6_ADDRSTRLEN);
    	if (ip_addr == (char *)NULL)
@@ -73,68 +74,131 @@ char *get_ip_addr(void)
     if(getifaddrs(&myaddrs) != 0)
     {
 		print(PRNT_ERR, "Unable to get ifaddrs for localhost\n");
-    	return NULL;
+    	free(ip_addr);
+		return NULL;
+	}
+	/* determine the number of interfaces in the list */
+	int num_interfaces = 0;
+	for (ifa = myaddrs; ifa != NULL; ifa = ifa -> ifa_next)
+	{
+		num_interfaces++;
+	}
+	struct ifaddrs **possible_interfaces = calloc(num_interfaces, sizeof(struct if_addrs *));
+	if (possible_interfaces == (struct ifaddrs **)NULL)
+	{
+		print(PRNT_ERR, "Unable to allocate lsit of possible interfaces\n");
+		free(ip_addr);
+		freeifaddrs(myaddrs);
+		return NULL;
 	}
 
-    for (ifa = myaddrs; ifa != NULL; ifa = ifa->ifa_next)
+	/* Perform first cut of interfaces */
+	num_interfaces = 0;
+    for (ifa = myaddrs; ifa != NULL; ifa = ifa -> ifa_next)
     {
 		/* Look only at non-null and UP interfaces */
         if (ifa->ifa_addr == NULL)
-		{
-            continue;
-		}
-		if (!(ifa->ifa_flags & IFF_UP))
-		{
-			continue;
-		}
-        if (ifa->ifa_flags & IFF_LOOPBACK)
-		{
-			continue;
-		}
-		if (ifa -> ifa_flags & IFF_POINTOPOINT)
 		{
 			continue;
 		}
 		switch (ifa->ifa_addr->sa_family)
         {
             case AF_INET:
-                break;
+				break;
 			/* Ignore INET6 interfaces */
-            case AF_INET6:
-                continue;
             default:
-                continue;
+				continue;
         }
-#if 0
-		if (!inet_ntop(ifa->ifa_addr->sa_family, in_addr, buf, sizeof(buf)))
-        {
-            printf("%s: inet_ntop failed!\n", ifa->ifa_name);
-        }
-        else
-        {
-            printf("%s: %s\n", ifa->ifa_name, buf);
-        }
-#endif
+		if (!(ifa -> ifa_flags & IFF_UP))
+		{
+			if (ip_str_from_sockaddr((struct sockaddr *)ifa->ifa_addr, ip_addr, INET6_ADDRSTRLEN) == 0)
+			{
+				debug(PRNT_INFO, "Skipping interface %s because it is down.\n");
+			}
+
+			continue;
+		}
+        if (ifa->ifa_flags & IFF_LOOPBACK)
+		{
+			/* Only use interfaces that are not loopback */
+			if (ip_str_from_sockaddr((struct sockaddr *)ifa->ifa_addr, ip_addr, INET6_ADDRSTRLEN) == 0)
+			{
+				debug(PRNT_INFO, "Skipping interface %s because it is loopback.\n", ip_addr);
+			}
+			continue;
+		}
+		if (ifa -> ifa_flags & IFF_POINTOPOINT)
+		{
+			/* Only use interfaces that are globally connected 
+			 * (not point-to-point) */
+			if (ip_str_from_sockaddr((struct sockaddr *)ifa->ifa_addr, ip_addr, INET6_ADDRSTRLEN) == 0)
+			{
+				debug(PRNT_INFO, "Skipping interface %s because it is P-P.\n", ip_addr);
+			}
+			continue;
+		}	
+		/* Store this as a possible interface */
+		possible_interfaces[num_interfaces] = ifa;
+		num_interfaces++;
+	}
+
+	if (num_interfaces == 0)
+	{
+		print(PRNT_ERR, "No network interfaces left to consider.\n");
+		freeifaddrs(myaddrs);
+		free(ip_addr);
+		return NULL;
+	}
+
+	/* Order IP address based on the name of the interface */
+	for (i = 0; i < num_interfaces; i++)
+	{
+		ifa = possible_interfaces[i];
+		if (strncmp(ifa -> ifa_name, "ib", 2) == 0)
+		{
+			if (ip_str_from_sockaddr((struct sockaddr *)ifa->ifa_addr, ip_addr, INET6_ADDRSTRLEN))
+			{
+				print(PRNT_ERR, "Unable to get IP addr string\n");
+				free(ip_addr);
+				ip_addr = NULL;
+			}
+			freeifaddrs(myaddrs);
+			free(possible_interfaces);
+			return ip_addr;
+		}
+	}
+
+	/* Look for interfaces without local prefixes */
+	for (i = 0; i < num_interfaces; i++)
+	{
+		ifa = possible_interfaces[i];
 		if (ip_str_from_sockaddr((struct sockaddr *)ifa->ifa_addr, ip_addr, INET6_ADDRSTRLEN))
 		{
 			print(PRNT_ERR, "Unable to get IP addr string\n");
-			freeifaddrs(myaddrs);
 			free(ip_addr);
-			return NULL;
+			ip_addr = NULL;
 		}
-		else if (strncmp("192.", ip_addr, 4) == 0 ||
-				 strncmp("127.", ip_addr, 4) == 0)
+		if (strncmp(ip_addr, "192.", 4) == 0 || strncmp(ip_addr, "172.", 4) == 0 ||
+			strncmp(ip_addr, "127.", 4) == 0 || strncmp(ip_addr, "10.", 3) == 0)
 		{
-			continue; /* Skip local ipv4 addresses */
+			continue;
 		}
-		else
-		{
-			break;
-		}
+		freeifaddrs(myaddrs);
+		free(possible_interfaces);
+		return ip_addr;
 	}
-		/* Free the ipaddres structure */
-    freeifaddrs(myaddrs);
-    return ip_addr;
+
+	/* Nothing left to do but choose the first interface in the list */
+	ifa = possible_interfaces[0];
+	if (ip_str_from_sockaddr((struct sockaddr *)ifa->ifa_addr, ip_addr, INET6_ADDRSTRLEN))
+	{
+		print(PRNT_ERR, "Unable to get IP addr string\n");
+		free(ip_addr);
+		ip_addr = NULL;
+	}
+	freeifaddrs(myaddrs);
+	free(possible_interfaces);
+	return ip_addr;
 }
 
 
