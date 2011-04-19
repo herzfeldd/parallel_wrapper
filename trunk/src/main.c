@@ -162,10 +162,10 @@ int main(int argc, char **argv)
 	if (par_wrapper -> this_machine -> rank == MASTER)
 	{
 		int i, j;
+		j = 0; /* Timeout = 0 */
 		while ( 1 )
 		{
 			int finished = 1;
-			j = 0; /* Timeout = 0 */
 			for (i = 0; i < par_wrapper -> num_procs; i++)
 			{
 				if (par_wrapper -> machines[i] == NULL)

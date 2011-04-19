@@ -61,7 +61,7 @@ int chirp_info(parallel_wrapper *par_wrapper)
 	}
 	
 	par_wrapper -> this_machine -> schedd_iwd = get_chirp_string(chirp, "IWD");
-	if (RC != 0)
+	if (par_wrapper -> this_machine -> schedd_iwd == NULL)
 	{
 		print(PRNT_WARN, "Failed to get IWD from classad. Assuming the current directory.");
 		par_wrapper -> this_machine -> schedd_iwd = (char *) malloc(1024 * sizeof(char));
@@ -98,7 +98,7 @@ int chirp_info(parallel_wrapper *par_wrapper)
 		while ( 1 )
 		{
 			par_wrapper -> master -> ip_addr = get_chirp_string(chirp, temp_str2); 	
-			if (RC == 0)
+			if (par_wrapper -> master -> ip_addr == NULL)
 			{
 				break;
 			}
