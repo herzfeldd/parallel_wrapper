@@ -31,23 +31,36 @@ int get_chirp_integer(struct chirp_client *chirp, const char *key, int *value)
 	{
 		return 3;
 	}	
-	if (str_len == 0)
+	if (str_len <= 0)
 	{
 		return 4;
 	}
+	char *new_string = (char *) calloc(str_len + 5, sizeof(char));
+	if (new_string == (char *)NULL)
+	{
+		return 5;
+	}
+	int i;
+	for (i = 0; i < str_len; i++)
+	{
+		new_string[i] = char_value[i];
+	}
+
 	/* Replace any quotation marks */
-	remove_quotes(char_value);
-	trim(char_value);
+	remove_quotes(new_string);
+	trim(new_string);
 
 	/* Attempt to convert the result into an int */
 	errno = 0;
-	int new_value = (int) strtol(char_value, &next, 10); /* Base 10 */
-	if (errno != 0 || next == char_value || next == NULL)
+	int new_value = (int) strtol(new_string, &next, 10); /* Base 10 */
+	if (errno != 0 || next == new_string || next == NULL)
 	{
+		free(new_string);
 		return 5;
 	}
 	/* Successfully parsed */
 	*value = new_value;
+	free(new_string);
 	return 0;
 }
 
@@ -83,15 +96,28 @@ char * get_chirp_string(struct chirp_client *chirp, const char *key)
 	{
 		return NULL;
 	}
-	/* Replace any quotation marks */
-	remove_quotes(char_value);
-	trim(char_value);
-	/* Check if the value is undefined */
-	if (! strncmp("UNDEFINED", char_value, str_len) || 
-			! strncmp("undefined", char_value, str_len))
+	/* Create a string that is at least 5 characters more than the length of this string */
+	char *new_string = (char *) calloc(str_len + 5, sizeof(char));
+	if (new_string == (char *)NULL)
 	{
 		return NULL;
 	}
+	int i;
+	for (i = 0; i < str_len; i++)
+	{
+		new_string[i] = char_value[i];
+	}
+	
+	/* Replace any quotation marks */
+	remove_quotes(new_string);
+	trim(new_string);
+	/* Check if the value is undefined */
+	if (! strncmp("UNDEFINED", new_string, str_len) || 
+			! strncmp("undefined", new_string, str_len))
+	{
+		free(new_string);
+		return NULL;
+	}
 	/* Return the value */
-	return strdup(char_value);
+	return new_string;
 }

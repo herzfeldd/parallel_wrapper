@@ -73,7 +73,7 @@ int chirp_info(parallel_wrapper *par_wrapper)
 	{
 		/* Get a random number */
 		srand (time(NULL)); /* Initialize random generator */
-		int random = rand();
+		int random = rand() % SHRT_MAX;
 		char temp_str[1024];
 		char temp_str2[1024];
 		snprintf(temp_str2, 1024, "%d", random);
