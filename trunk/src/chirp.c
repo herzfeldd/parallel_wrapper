@@ -71,17 +71,28 @@ int chirp_info(parallel_wrapper *par_wrapper)
 	/* Send the MASTER information back to the schedd */
 	if (par_wrapper -> this_machine -> rank == MASTER)
 	{
+		/* Get a random number */
+		srand (time(NULL)); /* Initialize random generator */
+		int random = rand();
 		char temp_str[1024];
-		snprintf(temp_str, 1024, "\"%s\"", par_wrapper -> this_machine -> ip_addr);
 		char temp_str2[1024];
-		snprintf(temp_str2, 1024, "MasterIpAddr_%d", par_wrapper -> entered_current_status);
+		snprintf(temp_str2, 1024, "%d", random);
+		RC = chirp_client_set_job_attr(chirp, "RandInt", temp_str2);
+		if (RC != 0)
+		{
+			print(PRNT_ERR, "Unable to send RandInt to the chirp server\n");
+			return 3;
+		}
+
+		snprintf(temp_str, 1024, "\"%s\"", par_wrapper -> this_machine -> ip_addr);
+		snprintf(temp_str2, 1024, "MasterIpAddr_%d", random);
 		RC = chirp_client_set_job_attr(chirp, temp_str2,  temp_str);
 		if (RC != 0)
 		{
 			print(PRNT_ERR, "Unable to send MasterIpAddr to the chirp server\n");
 			return 3;
 		}
-		snprintf(temp_str2, 1024, "MasterPort_%d", par_wrapper -> entered_current_status);
+		snprintf(temp_str2, 1024, "MasterPort_%d", random);
 		snprintf(temp_str, 1024, "%d", par_wrapper -> this_machine -> port);
 		RC = chirp_client_set_job_attr(chirp, temp_str2, temp_str);
 		if (RC != 0)
@@ -93,29 +104,34 @@ int chirp_info(parallel_wrapper *par_wrapper)
 	else /* I am not the master */
 	{
 		char temp_str2[1024];
-		snprintf(temp_str2, 1024, "MasterIpAddr_%d", par_wrapper -> entered_current_status);
-		/* Attempt to get the MasterIpAddr and MasterPort for the chirp server */
+		int random;
+		int port;
+		print(PRNT_INFO, "Attempting to get Host/IP from the schedd\n");
 		while ( 1 )
 		{
+			sleep(1);
+			RC = get_chirp_integer(chirp, "RandInt", &random);
+			if (RC != 0)
+			{
+				continue;
+			}
+			snprintf(temp_str2, 1024, "MasterIpAddr_%d", random);
 			par_wrapper -> master -> ip_addr = get_chirp_string(chirp, temp_str2); 	
-			if (par_wrapper -> master -> ip_addr == NULL)
+			if (par_wrapper -> master -> ip_addr == (char *)NULL)
 			{
-				break;
+				continue;
 			}
-			sleep(1);
-		}
-		snprintf(temp_str2, 1024, "MasterPort_%d", par_wrapper -> entered_current_status);
-		while ( 1 )
-		{
-			int port;
+			snprintf(temp_str2, 1024, "MasterPort_%d", random);
 			RC = get_chirp_integer(chirp, temp_str2, &port); 	
-			if (RC == 0)
+			if (RC != 0)
 			{
-				par_wrapper -> master -> port = (uint16_t) port;
-				break;
+				continue;
 			}
-			sleep(1);
+			/* Store the port */
+			par_wrapper -> master -> port = (uint16_t) port;
+			break; /* We have everything we need */
 		}
+
 		debug(PRNT_INFO, "Received master address/port: %s:%d\n", par_wrapper -> master -> ip_addr, par_wrapper -> master -> port);	
 	}
 
