@@ -8,7 +8,7 @@
 #include "log.h"
 
 extern int get_chirp_integer(struct chirp_client *chirp, const char *key, int *value);
-extern int get_chirp_string(struct chirp_client *chirp, const char *key, char **value);
+extern char * get_chirp_string(struct chirp_client *chirp, const char *key);
 
 
 #endif /* CHIRP_UTIL_H */

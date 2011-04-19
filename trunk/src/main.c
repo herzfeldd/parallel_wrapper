@@ -162,27 +162,39 @@ int main(int argc, char **argv)
 	if (par_wrapper -> this_machine -> rank == MASTER)
 	{
 		int i, j;
-		for (i = 0; i < par_wrapper -> num_procs; i++)
+		while ( 1 )
 		{
+			int finished = 1;
 			j = 0; /* Timeout = 0 */
-			while ( 1 )
+			for (i = 0; i < par_wrapper -> num_procs; i++)
 			{
-				if (par_wrapper -> machines[i] != NULL)
+				if (par_wrapper -> machines[i] == NULL)
 				{
-					break;
+					finished = 0;
 				}
-				sleep(1);
-				j++;
-				if (j == par_wrapper -> timeout)
-				{
-					print(PRNT_WARN, "Rank %d not registered - giving up on it\n", i);
-					break;
-				}
-				if ((j % par_wrapper -> ka_interval) == 0)
+				
+				if ((j % par_wrapper -> ka_interval) == 0 && par_wrapper -> machines[i] == NULL)
 				{
 					debug(PRNT_INFO, "Waiting for registration from rank %d\n", i);
 				}
 			}
+			j++; /* Waiting for timeout */
+			if (j >= par_wrapper -> timeout)
+			{
+				finished = 1;
+				for (i = 0; i < par_wrapper -> num_procs; i++)
+				{
+					if (par_wrapper -> machines[i] == NULL)
+					{
+						print(PRNT_WARN, "Rank %d not registered - giving up on it\n", i);
+					}
+				}
+			}	
+			if (finished == 1)
+			{
+				break;
+			}
+			sleep(1);
 		}
 		debug(PRNT_INFO, "Finished machine registration.\n", par_wrapper -> num_procs);
 		/* Create the machines file */

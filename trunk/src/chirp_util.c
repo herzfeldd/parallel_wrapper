@@ -35,11 +35,10 @@ int get_chirp_integer(struct chirp_client *chirp, const char *key, int *value)
 	{
 		return 4;
 	}
-	/* Insert a null character into the string */
-	char_value[str_len] = '\0';
 	/* Replace any quotation marks */
 	remove_quotes(char_value);
 	trim(char_value);
+
 	/* Attempt to convert the result into an int */
 	errno = 0;
 	int new_value = (int) strtol(char_value, &next, 10); /* Base 10 */
@@ -62,31 +61,28 @@ int get_chirp_integer(struct chirp_client *chirp, const char *key, int *value)
  *
  * @param chirp A connected chirp structure
  * @param key The key to look for
- * @param value (output) The resulting value
- * @return 0 on success, otherwise failure
+ * @return the allocated string on success, otherwise failure
  */
-int get_chirp_string(struct chirp_client *chirp, const char *key, char **value)
+char * get_chirp_string(struct chirp_client *chirp, const char *key)
 {
 	if (chirp == (struct chirp_client *)NULL)
 	{
-		return 1;
+		return NULL;
 	}
 	if (key == (char *)NULL)
 	{
-		return 2;
+		return NULL;
 	}
 	char *char_value = NULL;
 	int str_len = chirp_client_get_job_attr(chirp, key, &char_value);
 	if (char_value == NULL)
 	{
-		return 3;
+		return NULL;
 	}	
-	if (str_len == 0)
+	if (str_len <= 0)
 	{
-		return 4;
+		return NULL;
 	}
-	/* Insert a null character into the string */
-	char_value[str_len] = '\0';
 	/* Replace any quotation marks */
 	remove_quotes(char_value);
 	trim(char_value);
@@ -94,9 +90,8 @@ int get_chirp_string(struct chirp_client *chirp, const char *key, char **value)
 	if (! strncmp("UNDEFINED", char_value, str_len) || 
 			! strncmp("undefined", char_value, str_len))
 	{
-		return 5;
+		return NULL;
 	}
 	/* Return the value */
-	*value = strdup(char_value);
-	return 0;
+	return strdup(char_value);
 }

@@ -60,7 +60,7 @@ int chirp_info(parallel_wrapper *par_wrapper)
 		return 2;
 	}
 	
-	RC = get_chirp_string(chirp, "IWD", &par_wrapper -> this_machine -> schedd_iwd);
+	par_wrapper -> this_machine -> schedd_iwd = get_chirp_string(chirp, "IWD");
 	if (RC != 0)
 	{
 		print(PRNT_WARN, "Failed to get IWD from classad. Assuming the current directory.");
@@ -97,7 +97,7 @@ int chirp_info(parallel_wrapper *par_wrapper)
 		/* Attempt to get the MasterIpAddr and MasterPort for the chirp server */
 		while ( 1 )
 		{
-			RC = get_chirp_string(chirp, temp_str2, &par_wrapper -> master -> ip_addr); 	
+			par_wrapper -> master -> ip_addr = get_chirp_string(chirp, temp_str2); 	
 			if (RC == 0)
 			{
 				break;
