@@ -122,9 +122,7 @@ char *get_ip_addr(void)
 			free(ip_addr);
 			return NULL;
 		}
-		else if (strncmp("172.", ip_addr, 4) == 0 || 
-				 strncmp("192.", ip_addr, 4) == 0 ||
-				 strncmp("10.", ip_addr, 3) == 0 ||
+		else if (strncmp("192.", ip_addr, 4) == 0 ||
 				 strncmp("127.", ip_addr, 4) == 0)
 		{
 			continue; /* Skip local ipv4 addresses */
