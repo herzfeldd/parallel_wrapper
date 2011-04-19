@@ -14,6 +14,7 @@
  * @return An allocated string containing the IP address of this host
  *   returns NULL if there is an allocation error.
  */
+#if 0
 char *get_ip_addr(void)
 {
 	char hostname[1024]; /* Hostname filled in here */
@@ -32,7 +33,7 @@ char *get_ip_addr(void)
 	//hints.ai_family = AF_UNSPEC; /* IPv4 or IPv6 */
 	hints.ai_family = AF_INET; /* IPv4 ONLY */
 	hints.ai_socktype = SOCK_DGRAM; /* UDP packets */
-	hints.ai_flags = AI_PASSIVE | AI_ADDRCONFIG; 
+	hints.ai_flags = AI_PASSIVE; // | AI_ADDRCONFIG; 
 	if (getaddrinfo(hostname, NULL, &hints, &info) != 0)
 	{
 		print(PRNT_ERR, "Unable to get addrinfo for hostname %s\n", hostname);
@@ -42,6 +43,8 @@ char *get_ip_addr(void)
 	/* Get to the last value */
 	for (curr = info; curr -> ai_next != NULL; curr = curr -> ai_next)
 	{
+		ip_str_from_sockaddr((struct sockaddr *)curr -> ai_addr, ip_addr, INET6_ADDRSTRLEN);
+		printf("%s\n", ip_addr);
 		; /* Do nothing */
 	}
 	/* Get the IP string */
@@ -55,6 +58,88 @@ char *get_ip_addr(void)
 	freeaddrinfo(info);
 	return ip_addr;
 }
+#endif
+char *get_ip_addr(void)
+{
+    struct ifaddrs *myaddrs, *ifa;
+
+	char *ip_addr = malloc(sizeof(char) * INET6_ADDRSTRLEN);
+   	if (ip_addr == (char *)NULL)
+	{
+		print(PRNT_ERR, "Unable to allocate ip_addr string\n");
+		return NULL;
+	}	
+	
+    if(getifaddrs(&myaddrs) != 0)
+    {
+		print(PRNT_ERR, "Unable to get ifaddrs for localhost\n");
+    	return NULL;
+	}
+
+    for (ifa = myaddrs; ifa != NULL; ifa = ifa->ifa_next)
+    {
+		/* Look only at non-null and UP interfaces */
+        if (ifa->ifa_addr == NULL)
+		{
+            continue;
+		}
+		if (!(ifa->ifa_flags & IFF_UP))
+		{
+			continue;
+		}
+        if (ifa->ifa_flags & IFF_LOOPBACK)
+		{
+			continue;
+		}
+		if (ifa -> ifa_flags & IFF_POINTOPOINT)
+		{
+			continue;
+		}
+		switch (ifa->ifa_addr->sa_family)
+        {
+            case AF_INET:
+                break;
+			/* Ignore INET6 interfaces */
+            case AF_INET6:
+                continue;
+            default:
+                continue;
+        }
+#if 0
+		if (!inet_ntop(ifa->ifa_addr->sa_family, in_addr, buf, sizeof(buf)))
+        {
+            printf("%s: inet_ntop failed!\n", ifa->ifa_name);
+        }
+        else
+        {
+            printf("%s: %s\n", ifa->ifa_name, buf);
+        }
+#endif
+		if (ip_str_from_sockaddr((struct sockaddr *)ifa->ifa_addr, ip_addr, INET6_ADDRSTRLEN))
+		{
+			print(PRNT_ERR, "Unable to get IP addr string\n");
+			freeifaddrs(myaddrs);
+			free(ip_addr);
+			return NULL;
+		}
+		else if (strncmp("172.", ip_addr, 4) == 0 || 
+				 strncmp("192.", ip_addr, 4) == 0 ||
+				 strncmp("10.", ip_addr, 3) == 0 ||
+				 strncmp("127.", ip_addr, 4) == 0)
+		{
+			continue; /* Skip local ipv4 addresses */
+		}
+		else
+		{
+			break;
+		}
+	}
+		/* Free the ipaddres structure */
+    freeifaddrs(myaddrs);
+    return ip_addr;
+}
+
+
 
 /**
  * Returns the IP representation of the address in addr
