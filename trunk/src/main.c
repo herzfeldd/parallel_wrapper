@@ -227,7 +227,9 @@ int main(int argc, char **argv)
 			{
 				break;
 			}
-				debug(PRNT_INFO, "Waiting for ACK from mater\n"); 
+			debug(PRNT_INFO, "Waiting for ACK from mater\n"); 
+			/* Retrieve chirp information (in case it changed since the last time) */
+			chirp_info(par_wrapper);
 		}
 	}
 
