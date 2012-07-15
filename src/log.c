@@ -71,8 +71,6 @@ void print_message(enum PRINT_LEVEL type,  char *file, int line, __const char *_
  */
 void debug_message(enum PRINT_LEVEL type,  char *file, int line, __const char *__restrict __format, ...)
 {
-	int RC; /* generic function return code */
-
 	char *debug_val;
 	debug_val = getenv ("PARALLEL_DEBUG");
 	if (debug_val != NULL || type == PRNT_ERR || verbose)
@@ -80,7 +78,7 @@ void debug_message(enum PRINT_LEVEL type,  char *file, int line, __const char *_
 		va_list args;
 		va_start(args, __format);
 		char *expanded_string;
-		RC = vasprintf(&expanded_string, __format, args);
+		vasprintf(&expanded_string, __format, args);
 		print_message(type, file, line, expanded_string);
 		free(expanded_string);
 		va_end(args);

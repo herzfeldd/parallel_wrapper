@@ -1,6 +1,7 @@
 #include "wrapper.h"
 #include "chirp_util.h"
 #include "chirp_client.h"
+#include <limits.h>
 /**
  * Sends and receives the necessary chirp information back to the schedd
  * 

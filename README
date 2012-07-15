@@ -1,0 +1,171 @@
+README: parallel_wrapper
+Copyright(C) 2012, Marquette University
+Copyright(C) 2012, Johns Hopkins University School of Medicine
+
+For installation instructions, see `INSTALL' in this directory.
+
+1. Using the Parallel Wrapper
+2. Wrapper Options
+3. Environment Variables
+
+------------------------------
+1. Using the Parallel Wrapper
+------------------------------
+The parallel wrapper is a convient executable that is used to help
+run MPICH-2 (hydra) executables across a Condor cluster. This wrapper
+sets a number of environment variables that can be used inside of a
+script to configure and run MPI jobs on condor. This script is 
+largely agnostic to the underlying MPI implementation. Most of the
+testing for this script occured while running Condor 7.6 on MVAPICH.
+
+Similar to the Condor's java universe, the the wrapper is used by
+providing it as the Condor executable. The actual script that the 
+user wishes to run is then listed in Condor's arguments variable 
+within in the submit file. For example:
+## Example Submit File
+universe = parallel
+executable = parallel_wrapper
+args = "my_script.sh"
+# Request 4 machines with 4 processors per machine
+machine_count = 4
+RequestCpus = 4
+should_transfer_files = ALWAYS
+when_to_transfer_output = ON_EXIT
+RequestMemory = 1024
+queue
+
+Additional arguments can be provided to the parallel wrapper prior to 
+supplying the script/executable to run:
+executable = parallel_wrapper
+args = "--no-timeout my_script.sh --args-to-myscript"
+
+-------------------
+2. Wrapper Options
+-------------------
+Flags:
+ --verbose                  verbose mode
+ --no-timeout               disable aborts due to timeouts
+
+Options:
+ -h, --help                 this help message
+ -r, --rank={value}         set the rank of this host
+ -n {value}                 number of processes
+ -p, --ports={low:high}     port range to use
+ -t, --timeout={value}      set the execute timeouts (sec)
+ -k, --ka-interval={value}  interval between subsequent keep-alives
+
+Periodically, the wrapper sends keep-alive signals to the rest of the
+hosts. This monitors whether each host is alive. In the event that
+several keep alive signals are missed, the entire job is aborted.
+The intervals can be modified using the -t and -k options. If you do
+not wish to use keep-alives, the --no-timeout flag can be used.
+
+-------------------------
+3. Environment Variables
+-------------------------
+The wrapper sets up a number of environment variables which can be 
+used when constructing a script or running an executable. These
+environment variables are in addition to the variables set by
+Condor.
+
+Environment Variables:
+ [_CONDOR_PROCNO]           set the rank of this host
+ [_CONDOR_NUMPROCS]         number of processes
+
+Environment Variables Set By Wrapper:
+ [MACHINE_FILE]             the location of the machine file
+ [HOST_FILE]                identical to [MACHINE_FILE]
+ [SSH_CONFIG]               location of the SSH_CONFIG file
+ [SSH_WRAPPER]              wrapper around ssh which uses [SSH_CONFIG]
+ [REQUEST_CPUS]             the number of LOCAL cpus allocated (usually 1)
+ [NUM_MACHINES]             the number of machines (num_machines)
+ [NUM_PROCS]                total CPUs allocated for this task. This is
+                            the sum of request cpus across all machines.
+ [CPUS]                     identical to [NUM_PROC]
+ [RANK]                     the rank of this process (MASTER)
+ [CLUSTER_ID]               the Condor cluster ID
+ [SCRATCH_DIR]              wrapper scratch directory
+ [IWD]                      the job's initial working directory on the startd
+ [SCHEDD_IWD]               the job's initial working directory on the schedd
+ [IP_ADDR]                  the IP address of this host
+ [CMD_PORT]                 the command port on this host
+ [TRANSFER_FILES]           'TRUE'/'FALSE' depending on if the 
+                            IWD is shared across all hosts 
+ [SHARED_FS]                the location of the shared FS for
+                            this MPI process. For jobs which have
+                            [TRANSFER_FILES]='FALSE', this is a 'fake'
+                            shared FS
+ [SHARED_DIR]               identical to [SHARED_FS]
+
+-------------------
+4. Example Script
+-------------------
+The following script is an example of how to run an executable
+using MVAPICH-1.5.1-Hydra-1.3b1 (09/09/2010) and the parallel wrapper.
+A shared file system is not required for this example. We assume that
+the MVAPICH executables (mpiexec.hydra) are available on all machines
+in the cluster. The example uses a script called example.sh
+which is transfered to every machine upon job initialization. In 
+addition, we use a MPI C executable (mpi_executable) to run the test.
+
+---------------------
+4a. mpi_executable.c
+---------------------
+#include <stdio.h>
+#include <mpi.h>
+
+int main(int argc, char **argv)
+{
+	int rank;
+	MPI_Init(&argc, &argv);
+	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+	printf("Hello from process %d\n", rank);
+	MPI_Finalize();
+	return 0;
+}
+
+------------------------
+4b. Condor Submit Script
+------------------------
+## Submit Script
+universe = parallel
+executable = parallel_wrapper
+args = "--verbose --no-timeout example.sh"
+output = example.out
+error = example.err
+log = example.log
+GetEnv = True
+# Request 2 machine with 2 processors per machine
+machine_count = 2
+RequestCpus = 2
+RequestMemory = 100
+# Transfer Input Files
+should_transfer_files = ALWAYS
+when_to_transfer_output = ON_EXIT
+transfer_input_files = example.sh, mpi_executable
+notification = never
+queue
+
+--------------
+4c. example.sh
+--------------
+#!/bin/bash
+mpiexec.hydra -f ${MACHINE_FILE} -wdir ${SHARED_FS} -n ${CPUS} \
+-bootstrap-exec ${SSH_WRAPPER} mpi_executable
+
+---------------------------------
+4d. Expected Output (Approximate)
+---------------------------------
+Sun Jul 15 10:09:53 INFO: Skipping interface 127.0.0.1 because it is loopback.
+Sun Jul 15 10:09:53 INFO: IP Addr: 172.16.0.80
+Sun Jul 15 10:09:53 INFO: Bound to command port: 51000
+Sun Jul 15 10:09:53 INFO: Using scratch directory at /var/condor/execute/dir_11053/.condor_scratch_nh0dW9
+Sun Jul 15 10:09:53 INFO: Waiting for registration from rank 1
+Sun Jul 15 10:09:55 INFO: Finished machine registration.
+Sun Jul 15 10:09:55 INFO: Using fake file system (/tmp/condor_hydra_1322782_1342364995). IWD's across ranks differ
+Hello from process 0
+Hello from process 1
+Hello from process 2
+Hello from process 3
+Sun Jul 15 10:09:57 INFO: Successfully removed scratch directory /var/condor/execute/dir_11053/.condor_scratch_nh0dW9
+

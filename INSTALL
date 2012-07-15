@@ -1,0 +1,6 @@
+The parallel wrapper can be made by going into the compile folder
+and typing `make'. The default Makefile is set up for 64-bit processors.
+If you are running on a 32 bit machine, you will need to supply the 32-bit 
+chirp library which is included with each version of Condor.
+
+
